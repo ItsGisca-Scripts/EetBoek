@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#ffffff">
+    <title>Dagoverzicht eetdagboek</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --green: #376c55;
+            --ink: #25372e;
+            --muted: #748078;
+            --line: #cdd5ce;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            background: #f5f7f4;
+            color: var(--ink);
+            font: 14px/1.45 Arial, sans-serif;
+        }
+
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 18px 24px;
+        }
+
+        .toolbar a { color: var(--green); font-weight: 700; text-decoration: none; }
+        .document { max-width: 1200px; margin: 0 auto 32px; padding: 38px; background: white; }
+        .document-header { margin: 0 0 22px; }
+        h1 { max-width: 850px; margin: 0 0 13px; color: var(--green); font: 700 29px/1.25 'Courier New', monospace; }
+        .date { margin: 0; font-size: 13px; }
+        .table-scroll { overflow-x: auto; }
+        table { width: 100%; min-width: 900px; border-collapse: collapse; table-layout: fixed; }
+        th, td { padding: 9px 8px; border: 1px solid #879189; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+        thead th { background: #f6f7f5; font-size: 12px; }
+        tbody th { width: 100px; font-size: 12px; font-weight: 500; }
+        .meal-time { display: block; margin-top: 21px; color: var(--green); font-weight: 700; }
+        tbody td { height: 83px; color: var(--green); white-space: pre-line; font-size: 12px; }
+        tfoot th, tfoot td { height: auto; background: #fafbf9; font-size: 12px; }
+        .empty { color: #828b84; }
+        .stool-value { display: flex; align-items: center; gap: 5px; }
+        .stool-value svg { width: 60px; height: 25px; flex: 0 0 60px; }
+        .stool-value .crack { fill: none; stroke: #e5c7a6; stroke-width: 2; }
+        .day-notes { margin-top: 20px; padding: 15px; border: 1px solid var(--line); white-space: pre-wrap; }
+        .day-notes h2 { margin: 0 0 7px; font-size: 15px; }
+        .error { padding: 30px; text-align: center; color: #9c3d36; }
+
+        @media (max-width: 700px) {
+            .toolbar { padding: 14px; }
+            .document { margin: 0; padding: 20px 14px; }
+            h1 { font-size: 22px; }
+        }
+
+        @page { size: A4 landscape; margin: 12mm; }
+        @media print {
+            body { background: white; font-size: 11px; }
+            .toolbar { display: none; }
+            .document { max-width: none; margin: 0; padding: 0; }
+            .table-scroll { overflow: visible; }
+            table { min-width: 0; }
+            th, td { padding: 6px; }
+            thead th, tbody th, tbody td, tfoot th, tfoot td { font-size: 9px; }
+            tbody td { height: 67px; }
+            .day-notes { page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="toolbar">
+        <a href="./">← Terug naar mijn eetdagboek</a>
+        <span id="document-status" role="status">Dagoverzicht laden…</span>
+    </nav>
+    <main class="document" id="document">
+        <header class="document-header">
+            <h1>Eet- en klachtendagboek</h1>
+            <p class="date" id="document-date"></p>
+        </header>
+        <div class="table-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Dag en tijd</th>
+                        <th>Wat en hoeveel gegeten?</th>
+                        <th>Wat en hoeveel gedronken?</th>
+                        <th>Bijzonderheden zoals stress?</th>
+                        <th>Beweging?</th>
+                        <th>Ontlasting? Zo ja, welke vorm?</th>
+                        <th>Klachten? Zo ja, cijfer voor de draaglijkheid</th>
+                    </tr>
+                </thead>
+                <tbody id="meal-rows"></tbody>
+                <tfoot id="totals-row"></tfoot>
+            </table>
+        </div>
+        <section class="day-notes" id="day-notes" hidden>
+            <h2>Notities over de dag</h2>
+            <div id="day-notes-text"></div>
+        </section>
+    </main>
+    <script src="config.js"></script>
+    <script src="export.js"></script>
+</body>
+</html>

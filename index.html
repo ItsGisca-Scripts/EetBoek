@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#f5f7f4">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Eetdagboek">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="icon-180.png">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <title>Mijn eetdagboek</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <main class="install-screen panel" id="install-screen" hidden>
+        <img src="icon-192.png" class="install-logo" alt="">
+        <p class="eyebrow">MIJN EETDAGBOEK</p>
+        <h1 id="install-screen-heading">Gebruik het dagboek als app</h1>
+        <p class="install-intro" id="install-screen-intro">De website is alleen bedoeld om de app op je beginscherm te zetten. Voeg hem toe en open daarna het eetdagboek via het nieuwe icoon.</p>
+        <div class="notification-actions">
+            <button class="button button-secondary" id="share-install-link-button" type="button">Deel app-link</button>
+        </div>
+        <p class="notification-status" id="install-screen-status" role="status"></p>
+        <p class="notification-status" id="install-app-link-status" role="status" hidden></p>
+        <section class="install-instructions" id="ios-install-instructions" aria-labelledby="install-instructions-title">
+            <h2 id="install-instructions-title">Zo zet je de app op je beginscherm</h2>
+            <ol>
+                <li>Open deze site via een <strong>https://</strong>-adres in Safari.</li>
+                <li>Tik op <strong>Deel</strong> (het vierkant met de pijl omhoog) en kies <strong>Zet op beginscherm</strong>.</li>
+                <li>Tik op <strong>Voeg toe</strong> en open daarna het eetdagboek via het nieuwe icoon.</li>
+            </ol>
+            <p>Een gedeelde link opent de site. Je moet deze stappen daarna zelf in Safari afronden. Pushmeldingen vereisen iOS 16.4 of nieuwer.</p>
+        </section>
+        <section class="dev-access" id="dev-access" hidden>
+            <h2>Development</h2>
+            <p>Vul de dev-code in die in de terminal staat na <code>npm start</code> om het dagboek in je browser te openen. De code staat lokaal in <code>data/dev-code.json</code>; stel zelf een code in met de omgevingsvariabele <code>DEV_CODE</code>.</p>
+            <form class="auth-form" id="auth-form">
+                <label for="auth-password">Dev-code</label>
+                <input id="auth-password" type="password" inputmode="numeric" autocomplete="one-time-code" required>
+                <button class="button button-primary" type="submit">Open development</button>
+            </form>
+            <p class="notification-status" id="auth-status" role="status"></p>
+        </section>
+    </main>
+
+    <main class="app" id="diary-app" hidden>
+        <header class="topbar">
+            <a class="brand" href="#" aria-label="Mijn eetdagboek">
+                <img src="icon-192.png" class="brand-icon" aria-hidden="true">
+                <span>mijn eetdagboek</span>
+            </a>
+            <span class="save-status" id="save-status" role="status">Wordt opgeslagen</span>
+        </header>
+
+        <nav class="page-tabs" role="tablist" aria-label="Dagboekpagina's">
+            <button class="page-tab" id="diary-tab" type="button" role="tab"
+                aria-controls="diary-page" aria-selected="true" tabindex="0">Dagboek</button>
+            <button class="page-tab" id="reminders-tab" type="button" role="tab"
+                aria-controls="reminders-page" aria-selected="false" tabindex="-1">Herinneringen &amp; app</button>
+        </nav>
+
+        <div class="tab-panel" id="diary-page" role="tabpanel" aria-labelledby="diary-tab" tabindex="0">
+        <section class="intro">
+            <p class="eyebrow">JOUW DAGELIJKSE OVERZICHT</p>
+            <h1>Goed voor jezelf zorgen,<br><span>begint met bijhouden.</span></h1>
+            <p class="intro-copy">Noteer wat je eet en drinkt. Je gegevens worden automatisch per dag opgeslagen.</p>
+        </section>
+
+        <section class="date-panel" aria-label="Kies een dag">
+            <div>
+                <label for="diary-date">Mijn dag</label>
+                <p>Je kunt eerdere dagen altijd terug bekijken.</p>
+            </div>
+            <div class="date-controls">
+                <input id="diary-date" type="date">
+                <button class="button button-secondary" id="new-day-button" type="button">Dag aanmaken</button>
+                <select id="history-select" aria-label="Open een opgeslagen dag">
+                    <option value="">Eerdere dagen bekijken</option>
+                </select>
+            </div>
+        </section>
+
+        <section class="summary" aria-label="Dagoverzicht">
+            <div class="summary-icon" aria-hidden="true">☀</div>
+            <div class="summary-text">
+                <span class="summary-label">MOMENTEN INGEVULD</span>
+                <strong><span id="completed-count">0</span> van 6 eetmomenten</strong>
+            </div>
+            <div class="progress-track" aria-hidden="true"><span id="progress-bar"></span></div>
+        </section>
+
+        <section class="moments-section">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">MIJN EETMOMENTEN</p>
+                    <h2>Wat heb je gegeten?</h2>
+                </div>
+                <span class="section-hint">Vul in wat voor jou belangrijk is</span>
+            </div>
+            <div class="meal-list" id="meal-list"></div>
+        </section>
+
+        <section class="day-notes panel">
+            <div class="notes-heading">
+                <span class="notes-icon" aria-hidden="true">✎</span>
+                <div>
+                    <h2>Hoe was je dag?</h2>
+                    <p>Ruimte voor beweging, stress of iets anders dat je wilt onthouden.</p>
+                </div>
+            </div>
+            <label class="sr-only" for="day-notes">Notities over je dag</label>
+            <textarea id="day-notes" rows="3" placeholder="Bijvoorbeeld: een wandeling gemaakt, drukke dag gehad..."></textarea>
+        </section>
+
+        <section class="stool-panel panel" aria-labelledby="stool-heading">
+            <div class="notes-heading">
+                <span class="notes-icon stool-icon" aria-hidden="true">◉</span>
+                <div>
+                    <h2 id="stool-heading">Ontlasting</h2>
+                    <p>Vergelijk de illustraties; kies het passende type bij het eetmoment.</p>
+                </div>
+            </div>
+            <div class="stool-types" id="stool-types" aria-label="Uitleg van de ontlastingstypes"></div>
+        </section>
+
+        <section class="document-callout">
+            <div>
+                <p class="eyebrow">KLAAR VOOR JE AFSPRAAK?</p>
+                <h2>Neem je overzicht mee.</h2>
+                <p>Maak een net document van deze dag om met je diëtist te delen.</p>
+            </div>
+            <div class="document-actions">
+                <button class="button button-secondary" id="copy-button" type="button">Kopieer als tekst</button>
+                <button class="button button-primary" id="open-document-button" type="button">Open dagoverzicht</button>
+            </div>
+        </section>
+
+        <section class="copy-preview panel" id="copy-preview" hidden aria-labelledby="copy-preview-title">
+            <div class="notes-heading">
+                <span class="notes-icon" aria-hidden="true">▤</span>
+                <div>
+                    <h2 id="copy-preview-title">Tekstoverzicht van deze dag</h2>
+                    <p id="copy-status" role="status">Je overzicht staat hieronder.</p>
+                </div>
+            </div>
+            <label class="sr-only" for="copy-text">Tekstoverzicht om te kopiëren</label>
+            <textarea id="copy-text" rows="12" readonly></textarea>
+            <div class="copy-actions">
+                <button class="button button-secondary" id="copy-again-button" type="button">Kopieer opnieuw</button>
+                <button class="button button-secondary" id="close-copy-button" type="button">Sluiten</button>
+            </div>
+        </section>
+        </div>
+
+        <div class="tab-panel" id="reminders-page" role="tabpanel" aria-labelledby="reminders-tab" tabindex="0" hidden>
+            <section class="notification-panel panel" aria-labelledby="notification-heading">
+                <div class="notification-heading">
+                    <div>
+                        <p class="eyebrow">OP TIJD BIJHOUDEN</p>
+                        <h2 id="notification-heading">Herinneringen</h2>
+                        <p class="notification-copy">Kies wanneer je een seintje wilt. De eerste melding helpt je ook een nieuwe dag aan te maken.</p>
+                    </div>
+                    <div class="notification-actions">
+                        <button class="button button-secondary" id="share-app-button" type="button">Deel app-link</button>
+                        <button class="button button-primary" id="notification-toggle" type="button">Meldingen inschakelen</button>
+                        <button class="button button-secondary" id="logout-button" type="button" hidden>Uitloggen uit devmode</button>
+                    </div>
+                </div>
+                <p class="notification-status" id="notification-status" role="status">Pushmeldingen laden…</p>
+                <p class="notification-status" id="app-link-status" role="status" hidden></p>
+                <div class="notification-reminders" id="notification-reminders"></div>
+                <details class="install-help" id="install-help">
+                    <summary>De app op een iPhone zetten</summary>
+                    <ol>
+                        <li>Open deze site via een <strong>https://</strong>-adres in Safari.</li>
+                        <li>Tik op <strong>Deel</strong> en kies <strong>Zet op beginscherm</strong>.</li>
+                        <li>Open de nieuwe eetdagboek-app vanaf je beginscherm en schakel hierboven meldingen in.</li>
+                    </ol>
+                    <p>Je kunt hierboven de link delen. Op een iPhone moet de ontvanger de site in Safari openen en zelf op <strong>Deel → Zet op beginscherm</strong> tikken; iOS staat installatie via alleen een link niet toe.</p>
+                    <p>Pushmeldingen op iPhone vereisen iOS 16.4 of nieuwer en dat de site aan het beginscherm is toegevoegd.</p>
+                    <p>De server moet blijven draaien om herinneringen op tijd te versturen.</p>
+                </details>
+            </section>
+        </div>
+
+        <footer>Je dagboek wordt veilig opgeslagen via de ingestelde server.</footer>
+    </main>
+    <script src="config.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
