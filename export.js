@@ -142,14 +142,12 @@ async function loadDocument() {
         throw new Error('De datum in de documentlink is ongeldig.');
     }
     let day;
-    const response = await fetch(window.eetdagboekApiUrl(`/api/days/${date}`));
-    if (response.status === 404) {
-        day = { meals: {}, notes: '', stoolType: null };
-    } else if (!response.ok) {
-        throw new Error(`De dag kon niet worden geladen (fout ${response.status}).`);
-    } else {
-        day = await response.json();
+    const saved = localStorage.getItem('mijn-eetdagboek-v1');
+    const days = saved ? JSON.parse(saved) : {};
+    if (!days || typeof days !== 'object' || Array.isArray(days)) {
+        throw new Error('De lokaal opgeslagen dagen hebben een ongeldig formaat.');
     }
+    day = days[date] || { meals: {}, notes: '', stoolType: null };
     renderDocument(date, day);
 }
 

@@ -14,38 +14,7 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <main class="install-screen panel" id="install-screen" hidden>
-        <img src="icon-192.png" class="install-logo" alt="">
-        <p class="eyebrow">MIJN EETDAGBOEK</p>
-        <h1 id="install-screen-heading">Gebruik het dagboek als app</h1>
-        <p class="install-intro" id="install-screen-intro">De website is alleen bedoeld om de app op je beginscherm te zetten. Voeg hem toe en open daarna het eetdagboek via het nieuwe icoon.</p>
-        <div class="notification-actions">
-            <button class="button button-secondary" id="share-install-link-button" type="button">Deel app-link</button>
-        </div>
-        <p class="notification-status" id="install-screen-status" role="status"></p>
-        <p class="notification-status" id="install-app-link-status" role="status" hidden></p>
-        <section class="install-instructions" id="ios-install-instructions" aria-labelledby="install-instructions-title">
-            <h2 id="install-instructions-title">Zo zet je de app op je beginscherm</h2>
-            <ol>
-                <li>Open deze site via een <strong>https://</strong>-adres in Safari.</li>
-                <li>Tik op <strong>Deel</strong> (het vierkant met de pijl omhoog) en kies <strong>Zet op beginscherm</strong>.</li>
-                <li>Tik op <strong>Voeg toe</strong> en open daarna het eetdagboek via het nieuwe icoon.</li>
-            </ol>
-            <p>Een gedeelde link opent de site. Je moet deze stappen daarna zelf in Safari afronden. Pushmeldingen vereisen iOS 16.4 of nieuwer.</p>
-        </section>
-        <section class="dev-access" id="dev-access" hidden>
-            <h2>Development</h2>
-            <p>Vul de dev-code in die in de terminal staat na <code>npm start</code> om het dagboek in je browser te openen. De code staat lokaal in <code>data/dev-code.json</code>; stel zelf een code in met de omgevingsvariabele <code>DEV_CODE</code>.</p>
-            <form class="auth-form" id="auth-form">
-                <label for="auth-password">Dev-code</label>
-                <input id="auth-password" type="password" inputmode="numeric" autocomplete="one-time-code" required>
-                <button class="button button-primary" type="submit">Open development</button>
-            </form>
-            <p class="notification-status" id="auth-status" role="status"></p>
-        </section>
-    </main>
-
-    <main class="app" id="diary-app" hidden>
+    <main class="app" id="diary-app">
         <header class="topbar">
             <a class="brand" href="#" aria-label="Mijn eetdagboek">
                 <img src="icon-192.png" class="brand-icon" aria-hidden="true">
@@ -58,7 +27,7 @@
             <button class="page-tab" id="diary-tab" type="button" role="tab"
                 aria-controls="diary-page" aria-selected="true" tabindex="0">Dagboek</button>
             <button class="page-tab" id="reminders-tab" type="button" role="tab"
-                aria-controls="reminders-page" aria-selected="false" tabindex="-1">Herinneringen &amp; app</button>
+                aria-controls="reminders-page" aria-selected="false" tabindex="-1">App gebruiken</button>
         </nav>
 
         <div class="tab-panel" id="diary-page" role="tabpanel" aria-labelledby="diary-tab" tabindex="0">
@@ -158,36 +127,29 @@
             <section class="notification-panel panel" aria-labelledby="notification-heading">
                 <div class="notification-heading">
                     <div>
-                        <p class="eyebrow">OP TIJD BIJHOUDEN</p>
-                        <h2 id="notification-heading">Herinneringen</h2>
-                        <p class="notification-copy">Kies wanneer je een seintje wilt. De eerste melding helpt je ook een nieuwe dag aan te maken.</p>
+                        <p class="eyebrow">OP ELK MOMENT BESCHIKBAAR</p>
+                        <h2 id="notification-heading">Gebruik als app</h2>
+                        <p class="notification-copy" id="notification-copy">Je dagboek wordt alleen in deze browser op dit apparaat opgeslagen. Een gedeelde link deelt de app, niet je gegevens.</p>
                     </div>
                     <div class="notification-actions">
                         <button class="button button-secondary" id="share-app-button" type="button">Deel app-link</button>
-                        <button class="button button-primary" id="notification-toggle" type="button">Meldingen inschakelen</button>
-                        <button class="button button-secondary" id="logout-button" type="button" hidden>Uitloggen uit devmode</button>
                     </div>
                 </div>
-                <p class="notification-status" id="notification-status" role="status">Pushmeldingen laden…</p>
                 <p class="notification-status" id="app-link-status" role="status" hidden></p>
-                <div class="notification-reminders" id="notification-reminders"></div>
                 <details class="install-help" id="install-help">
                     <summary>De app op een iPhone zetten</summary>
                     <ol>
                         <li>Open deze site via een <strong>https://</strong>-adres in Safari.</li>
                         <li>Tik op <strong>Deel</strong> en kies <strong>Zet op beginscherm</strong>.</li>
-                        <li>Open de nieuwe eetdagboek-app vanaf je beginscherm en schakel hierboven meldingen in.</li>
+                        <li>Open de nieuwe eetdagboek-app vanaf je beginscherm.</li>
                     </ol>
-                    <p>Je kunt hierboven de link delen. Op een iPhone moet de ontvanger de site in Safari openen en zelf op <strong>Deel → Zet op beginscherm</strong> tikken; iOS staat installatie via alleen een link niet toe.</p>
-                    <p>Pushmeldingen op iPhone vereisen iOS 16.4 of nieuwer en dat de site aan het beginscherm is toegevoegd.</p>
-                    <p>De server moet blijven draaien om herinneringen op tijd te versturen.</p>
+                    <p>Je kunt hierboven de link delen. De ontvanger moet de app op het eigen apparaat installeren. Dagboekgegevens worden niet met anderen gedeeld of gesynchroniseerd.</p>
                 </details>
             </section>
         </div>
 
-        <footer>Je dagboek wordt veilig opgeslagen via de ingestelde server.</footer>
+        <footer id="storage-status">Je dagboek wordt alleen in deze browser op dit apparaat opgeslagen.</footer>
     </main>
-    <script src="config.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

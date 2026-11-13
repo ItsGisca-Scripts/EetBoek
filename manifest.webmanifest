@@ -2,7 +2,7 @@
   "id": "./",
   "name": "Mijn eetdagboek",
   "short_name": "Eetdagboek",
-  "description": "Houd je eetmomenten, klachten en herinneringen bij.",
+  "description": "Houd je eetmomenten en klachten bij.",
   "lang": "nl",
   "start_url": "./?source=homescreen",
   "scope": "./",

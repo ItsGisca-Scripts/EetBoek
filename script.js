@@ -17,50 +17,18 @@ const stoolTypes = [
     { type: 7, title: 'Waterig', detail: 'Geen vaste stukjes, helemaal vloeibaar' }
 ];
 
-const reminderTemplates = [
-    { id: 'new-day', label: 'Nieuwe dag en ontbijt', time: '07:00' },
-    { id: 'snack-morning', label: 'Tussendoor in de ochtend', time: '09:45' },
-    { id: 'lunch', label: 'Lunch', time: '12:00' },
-    { id: 'snack-afternoon', label: 'Tussendoor in de middag', time: '15:00' },
-    { id: 'dinner', label: 'Warme maaltijd', time: '18:00' },
-    { id: 'snack-evening', label: 'Tussendoor in de avond', time: '20:00' }
-];
-
+const diaryStorageKey = 'mijn-eetdagboek-v1';
 const dateInput = document.getElementById('diary-date');
 const historySelect = document.getElementById('history-select');
 const mealList = document.getElementById('meal-list');
 const notesInput = document.getElementById('day-notes');
 const stoolTypesElement = document.getElementById('stool-types');
 const saveStatus = document.getElementById('save-status');
-const notificationToggle = document.getElementById('notification-toggle');
-const notificationStatus = document.getElementById('notification-status');
-const notificationReminders = document.getElementById('notification-reminders');
-const installHelp = document.getElementById('install-help');
 const appLinkStatus = document.getElementById('app-link-status');
-const installScreen = document.getElementById('install-screen');
-const installScreenStatus = document.getElementById('install-screen-status');
-const installScreenHeading = document.getElementById('install-screen-heading');
-const installScreenIntro = document.getElementById('install-screen-intro');
-const installAppLinkStatus = document.getElementById('install-app-link-status');
-const iosInstallInstructions = document.getElementById('ios-install-instructions');
-const devAccess = document.getElementById('dev-access');
-const authForm = document.getElementById('auth-form');
-const authPassword = document.getElementById('auth-password');
-const authStatus = document.getElementById('auth-status');
-const logoutButton = document.getElementById('logout-button');
-const diaryApp = document.getElementById('diary-app');
 const pageTabs = Array.from(document.querySelectorAll('.page-tab'));
 const pagePanels = Array.from(document.querySelectorAll('.tab-panel'));
 let activeDay = blankDay();
-let pendingWrite = null;
-let saveTimer = null;
-let writeChain = Promise.resolve();
-let notificationSettings = readNotificationSettings();
-let pushSubscription = null;
-let serviceWorkerRegistration = null;
-let notificationSaveTimer = null;
-let isDevMode = false;
-let appStarted = false;
+let activeDate = '';
 
 function localDateString(date) {
     const year = date.getFullYear();
@@ -89,263 +57,6 @@ function escapeHtml(value) {
         '"': '&quot;',
         "'": '&#39;'
     })[character]);
-}
-
-function defaultNotificationSettings() {
-    return {
-        enabled: false,
-        reminders: reminderTemplates.map(reminder => ({
-            id: reminder.id,
-            time: reminder.time,
-            enabled: true
-        }))
-    };
-}
-
-function readNotificationSettings() {
-    try {
-        const saved = JSON.parse(localStorage.getItem('eetdagboek-notifications-v1') || 'null');
-        const defaults = defaultNotificationSettings();
-        if (!saved || typeof saved !== 'object') return defaults;
-        defaults.enabled = saved.enabled === true;
-        defaults.reminders = reminderTemplates.map(template => {
-            const setting = Array.isArray(saved.reminders)
-                ? saved.reminders.find(reminder => reminder && reminder.id === template.id)
-                : null;
-            return {
-                id: template.id,
-                time: setting && /^([01]\d|2[0-3]):[0-5]\d$/.test(setting.time)
-                    ? setting.time
-                    : template.time,
-                enabled: setting ? setting.enabled !== false : true
-            };
-        });
-        return defaults;
-    } catch (error) {
-        console.error('Meldingsinstellingen konden niet worden gelezen.', error);
-        return defaultNotificationSettings();
-    }
-}
-
-function saveNotificationSettingsLocally() {
-    try {
-        localStorage.setItem('eetdagboek-notifications-v1', JSON.stringify(notificationSettings));
-    } catch (error) {
-        console.error('Meldingsinstellingen konden niet lokaal worden opgeslagen.', error);
-        notificationStatus.textContent = 'Instellingen konden niet op dit apparaat worden opgeslagen.';
-    }
-}
-
-function renderNotificationReminders() {
-    notificationReminders.innerHTML = reminderTemplates.map(template => {
-        const setting = notificationSettings.reminders.find(reminder => reminder.id === template.id);
-        return `
-            <div class="reminder-row">
-                <label class="reminder-choice" for="reminder-enabled-${template.id}">
-                    <input id="reminder-enabled-${template.id}" type="checkbox"
-                        data-reminder-enabled="${template.id}" ${setting.enabled ? 'checked' : ''}>
-                    <span>${template.label}</span>
-                </label>
-                <label class="sr-only" for="reminder-time-${template.id}">Tijd voor ${template.label}</label>
-                <input id="reminder-time-${template.id}" type="time" data-reminder-time="${template.id}"
-                    value="${setting.time}">
-            </div>
-        `;
-    }).join('');
-}
-
-function handleNotificationSettingsChange(event) {
-    const reminderId = event.target.dataset.reminderEnabled || event.target.dataset.reminderTime;
-    if (!reminderId) return;
-    const reminder = notificationSettings.reminders.find(item => item.id === reminderId);
-    if (!reminder) return;
-    if (event.target.dataset.reminderEnabled) reminder.enabled = event.target.checked;
-    else reminder.time = event.target.value;
-
-    saveNotificationSettingsLocally();
-    if (!notificationSettings.enabled || !pushSubscription) return;
-
-    window.clearTimeout(notificationSaveTimer);
-    notificationSaveTimer = window.setTimeout(async () => {
-        try {
-            await savePushSettings();
-            notificationStatus.textContent = 'Herinneringstijden bijgewerkt.';
-        } catch (error) {
-            notificationStatus.textContent = `Tijden konden niet naar de server worden gestuurd: ${error.message}`;
-            console.error('Pushherinneringen konden niet worden bijgewerkt.', error);
-        }
-    }, 400);
-}
-
-function isIosDevice() {
-    return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-}
-
-function isInstalledApp() {
-    return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-}
-
-function base64UrlToBytes(base64Url) {
-    const padding = '='.repeat((4 - base64Url.length % 4) % 4);
-    const base64 = (base64Url + padding).replace(/-/g, '+').replace(/_/g, '/');
-    const raw = atob(base64);
-    return Uint8Array.from(raw, character => character.charCodeAt(0));
-}
-
-function pushSettingsPayload() {
-    return {
-        enabled: notificationSettings.enabled,
-        reminders: notificationSettings.reminders,
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Amsterdam'
-    };
-}
-
-async function savePushSettings() {
-    if (!pushSubscription) return;
-    await apiRequest('/api/push/subscriptions', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            subscription: pushSubscription.toJSON(),
-            settings: pushSettingsPayload()
-        })
-    });
-}
-
-async function enablePushNotifications() {
-    if (!window.isSecureContext) {
-        throw new Error('Pushmeldingen werken pas op een HTTPS-site. Open de beveiligde site op je iPhone.');
-    }
-    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-        throw new Error('Deze browser ondersteunt geen pushmeldingen.');
-    }
-    if (isIosDevice() && !isInstalledApp()) {
-        installHelp.open = true;
-        throw new Error('Zet de site eerst via Safari op het beginscherm en open daarna de app.');
-    }
-
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-        throw new Error('Meldingen zijn niet toegestaan. Controleer de meldingsinstellingen van je browser.');
-    }
-
-    serviceWorkerRegistration = await navigator.serviceWorker.register('service-worker.js');
-    const keyResult = await apiRequest('/api/push/public-key');
-    pushSubscription = await serviceWorkerRegistration.pushManager.getSubscription();
-    let createdSubscription = false;
-    if (!pushSubscription) {
-        pushSubscription = await serviceWorkerRegistration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: base64UrlToBytes(keyResult.publicKey)
-        });
-        createdSubscription = true;
-    }
-
-    notificationSettings.enabled = true;
-    try {
-        await savePushSettings();
-    } catch (error) {
-        notificationSettings.enabled = false;
-        saveNotificationSettingsLocally();
-        if (createdSubscription && pushSubscription) {
-            try {
-                await apiRequest('/api/push/subscriptions', {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ endpoint: pushSubscription.endpoint })
-                });
-            } catch (cleanupError) {
-                console.error('Mislukte pushregistratie kon niet van de server worden verwijderd.', cleanupError);
-            }
-            try {
-                await pushSubscription.unsubscribe();
-                pushSubscription = null;
-            } catch (cleanupError) {
-                console.error('Mislukte pushregistratie kon niet van het apparaat worden verwijderd.', cleanupError);
-            }
-        }
-        throw error;
-    }
-    saveNotificationSettingsLocally();
-    notificationToggle.textContent = 'Meldingen uitschakelen';
-    notificationStatus.textContent = 'Meldingen staan aan. Je tijden worden per dag automatisch gevolgd.';
-}
-
-async function disablePushNotifications() {
-    notificationSettings.enabled = false;
-    saveNotificationSettingsLocally();
-    notificationToggle.textContent = 'Meldingen inschakelen';
-
-    let cleanupError = null;
-    try {
-        if (!serviceWorkerRegistration && 'serviceWorker' in navigator && window.isSecureContext) {
-            serviceWorkerRegistration = await navigator.serviceWorker.getRegistration();
-        }
-        pushSubscription = pushSubscription ||
-            (serviceWorkerRegistration && await serviceWorkerRegistration.pushManager.getSubscription());
-    } catch (error) {
-        cleanupError = error;
-    }
-
-    if (pushSubscription) {
-        try {
-            await apiRequest('/api/push/subscriptions', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ endpoint: pushSubscription.endpoint })
-            });
-        } catch (error) {
-            cleanupError = error;
-            console.error('Pushabonnement kon niet van de server worden verwijderd.', error);
-        }
-        try {
-            await pushSubscription.unsubscribe();
-            pushSubscription = null;
-        } catch (error) {
-            cleanupError = cleanupError || error;
-            console.error('Pushabonnement kon niet van het apparaat worden verwijderd.', error);
-        }
-    }
-
-    if (cleanupError) {
-        notificationStatus.textContent = `Meldingen lokaal uitgezet; server kon niet volledig worden bijgewerkt: ${cleanupError.message}`;
-        console.error('Pushmeldingen konden niet volledig worden uitgeschakeld.', cleanupError);
-    } else {
-        notificationStatus.textContent = 'Meldingen staan uit.';
-    }
-}
-
-async function initializeNotifications() {
-    renderNotificationReminders();
-    if (!window.isSecureContext) {
-        notificationStatus.textContent = 'Voor installeren en pushmeldingen is een HTTPS-site nodig.';
-        return;
-    }
-    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-        notificationStatus.textContent = 'Deze browser ondersteunt geen pushmeldingen.';
-        return;
-    }
-
-    try {
-        serviceWorkerRegistration = await navigator.serviceWorker.register('service-worker.js');
-        pushSubscription = await serviceWorkerRegistration.pushManager.getSubscription();
-        if (notificationSettings.enabled && pushSubscription && Notification.permission === 'granted') {
-            await savePushSettings();
-            notificationToggle.textContent = 'Meldingen uitschakelen';
-            notificationStatus.textContent = 'Meldingen staan aan.';
-        } else {
-            notificationSettings.enabled = false;
-            saveNotificationSettingsLocally();
-            notificationToggle.textContent = 'Meldingen inschakelen';
-            notificationStatus.textContent = isIosDevice() && !isInstalledApp()
-                ? 'Voeg deze site eerst via Safari toe aan je beginscherm om meldingen te gebruiken.'
-                : 'Meldingen staan uit. Stel hieronder je tijden in of schakel ze in.';
-        }
-    } catch (error) {
-        notificationStatus.textContent = `Meldingen konden niet worden voorbereid: ${error.message}`;
-        console.error('Pushmeldingen konden niet worden voorbereid.', error);
-    }
 }
 
 async function shareAppLink(statusElement = appLinkStatus) {
@@ -378,34 +89,6 @@ async function shareAppLink(statusElement = appLinkStatus) {
     }
 }
 
-async function prepareInstallScreen() {
-    if (!isIosDevice()) {
-        installScreenHeading.textContent = 'De app is voorlopig alleen voor iPhone';
-        installScreenIntro.textContent = 'Gebruik de dev-code hieronder om de app in je browser te bekijken tijdens development.';
-        installScreenStatus.textContent = 'De app is voorlopig alleen beschikbaar op iPhone en iPad. Gebruik de dev-code hieronder voor development.';
-        iosInstallInstructions.hidden = true;
-        return;
-    }
-
-    iosInstallInstructions.hidden = false;
-    if (!window.isSecureContext) {
-        installScreenStatus.textContent = 'Installeren op iPhone werkt alleen via een beveiligd HTTPS-adres.';
-        return;
-    }
-    if (!('serviceWorker' in navigator)) {
-        installScreenStatus.textContent = 'Open deze link in Safari om hem op je beginscherm te zetten.';
-        return;
-    }
-
-    try {
-        await navigator.serviceWorker.register('service-worker.js');
-        installScreenStatus.textContent = 'Open deze link in Safari en volg de stappen hieronder.';
-    } catch (error) {
-        installScreenStatus.textContent = `Safari-installatie kon niet worden voorbereid: ${error.message}`;
-        console.error('De iPhone-webapp kon niet worden voorbereid voor installatie.', error);
-    }
-}
-
 function blankDay() {
     const meals = {};
     moments.forEach(moment => {
@@ -421,6 +104,20 @@ function blankDay() {
         };
     });
     return { meals, notes: '', stoolType: null };
+}
+
+function readLocalDays() {
+    const saved = localStorage.getItem(diaryStorageKey);
+    if (!saved) return {};
+    const days = JSON.parse(saved);
+    if (!days || typeof days !== 'object' || Array.isArray(days)) {
+        throw new Error('De lokaal opgeslagen dagen hebben een ongeldig formaat.');
+    }
+    return days;
+}
+
+function writeLocalDays(days) {
+    localStorage.setItem(diaryStorageKey, JSON.stringify(days));
 }
 
 function normalizeDay(savedDay) {
@@ -441,23 +138,6 @@ function normalizeDay(savedDay) {
         day.stoolType = savedDay.stoolType;
     }
     return day;
-}
-
-async function apiRequest(url, options) {
-    const response = await fetch(window.eetdagboekApiUrl(url), options);
-    if (!response.ok) {
-        let message = `Serverfout (${response.status})`;
-        try {
-            const result = await response.json();
-            if (result.error) message = result.error;
-        } catch {
-            // Use the HTTP status when the server does not return JSON.
-        }
-        const error = new Error(message);
-        error.status = response.status;
-        throw error;
-    }
-    return response.json();
 }
 
 function render() {
@@ -565,34 +245,36 @@ function collectDay() {
 function scheduleSave() {
     activeDay = collectDay();
     updateSummary();
-    pendingWrite = { date: dateInput.value, day: activeDay };
-    saveStatus.textContent = 'Opslaan…';
-    window.clearTimeout(saveTimer);
-    saveTimer = window.setTimeout(flushQueuedSave, 300);
-}
-
-function flushQueuedSave() {
-    window.clearTimeout(saveTimer);
-    saveTimer = null;
-    if (!pendingWrite) return writeChain;
-
-    const entry = pendingWrite;
-    pendingWrite = null;
-    writeChain = writeChain.then(async () => {
-        await apiRequest(`/api/days/${entry.date}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(entry.day)
-        });
-        saveStatus.textContent = 'Opgeslagen in data-bestand';
+    try {
+        const days = readLocalDays();
+        const date = activeDate || dateInput.value;
+        days[date] = activeDay;
+        writeLocalDays(days);
+        saveStatus.textContent = 'Opgeslagen op dit apparaat';
         saveStatus.title = '';
-        await refreshHistory();
-    }).catch(error => {
+        refreshHistory();
+    } catch (error) {
         saveStatus.textContent = 'Opslaan mislukt';
         saveStatus.title = `Je wijzigingen konden niet worden opgeslagen: ${error.message}`;
         console.error('Eetdagboek kon niet worden opgeslagen.', error);
-    });
-    return writeChain.then(() => pendingWrite ? flushQueuedSave() : undefined);
+    }
+}
+
+function saveCurrentDay() {
+    if (!activeDate) return true;
+    activeDay = collectDay();
+    try {
+        const days = readLocalDays();
+        days[activeDate] = activeDay;
+        writeLocalDays(days);
+        refreshHistory();
+        return true;
+    } catch (error) {
+        saveStatus.textContent = 'Opslaan mislukt';
+        saveStatus.title = `Je wijzigingen konden niet worden opgeslagen: ${error.message}`;
+        console.error('Eetdagboek kon niet worden opgeslagen.', error);
+        return false;
+    }
 }
 
 function updateSummary() {
@@ -615,8 +297,11 @@ function formatDate(dateString) {
     }).format(new Date(`${dateString}T00:00:00Z`));
 }
 
-async function refreshHistory() {
-    const dates = await apiRequest('/api/days');
+function refreshHistory() {
+    const dates = Object.keys(readLocalDays())
+        .filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date))
+        .sort()
+        .reverse();
     const currentValue = historySelect.value;
     historySelect.innerHTML = '<option value="">Eerdere dagen bekijken</option>';
     dates.forEach(date => {
@@ -628,23 +313,21 @@ async function refreshHistory() {
     if (dates.includes(currentValue)) historySelect.value = currentValue;
 }
 
-async function loadDay(date) {
-    saveStatus.textContent = 'Dag laden…';
+function loadDay(date) {
     try {
-        await flushQueuedSave();
-        await writeChain;
-        let savedDay;
-        try {
-            savedDay = await apiRequest(`/api/days/${date}`);
-        } catch (error) {
-            if (error.status !== 404) throw error;
-            savedDay = null;
+        if (activeDate && activeDate !== date && !saveCurrentDay()) {
+            dateInput.value = activeDate;
+            return;
         }
+        const days = readLocalDays();
+        const savedDay = Object.prototype.hasOwnProperty.call(days, date) ? days[date] : null;
         activeDay = normalizeDay(savedDay);
+        activeDate = date;
         render();
-        saveStatus.textContent = savedDay ? 'Dag geladen' : 'Nieuwe, nog niet opgeslagen dag';
+        saveStatus.textContent = savedDay ? 'Dag geladen' : 'Nieuwe dag, nog niet opgeslagen';
         saveStatus.title = '';
     } catch (error) {
+        if (activeDate) dateInput.value = activeDate;
         activeDay = blankDay();
         render();
         saveStatus.textContent = 'Dag laden mislukt';
@@ -653,58 +336,30 @@ async function loadDay(date) {
     }
 }
 
-async function createDay() {
+function createDay() {
     const date = dateInput.value;
     if (!date) return;
-    await flushQueuedSave();
     try {
-        await apiRequest(`/api/days/${date}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(blankDay())
-        });
-        activeDay = blankDay();
-        render();
-        saveStatus.textContent = 'Dag aangemaakt en opgeslagen';
-        saveStatus.title = '';
-        await refreshHistory();
-    } catch (error) {
-        if (error.status === 409) {
+        if (!saveCurrentDay()) return;
+        const days = readLocalDays();
+        if (Object.prototype.hasOwnProperty.call(days, date)) {
             saveStatus.textContent = 'Deze dag bestaat al';
-            await loadDay(date);
+            loadDay(date);
             return;
         }
+        days[date] = blankDay();
+        writeLocalDays(days);
+        activeDay = blankDay();
+        activeDate = date;
+        render();
+        saveStatus.textContent = 'Dag aangemaakt en opgeslagen op dit apparaat';
+        saveStatus.title = '';
+        refreshHistory();
+    } catch (error) {
         saveStatus.textContent = 'Dag aanmaken mislukt';
         saveStatus.title = error.message;
         console.error('Eetdagboek kon niet worden aangemaakt.', error);
     }
-}
-
-async function migrateLegacyData() {
-    const storageKey = 'mijn-eetdagboek-v1';
-    const saved = localStorage.getItem(storageKey);
-    if (!saved) return;
-
-    const legacyDiary = JSON.parse(saved);
-    if (!legacyDiary || typeof legacyDiary !== 'object' || Array.isArray(legacyDiary)) {
-        throw new Error('De eerder opgeslagen gegevens hebben een ongeldig formaat.');
-    }
-
-    for (const [date, savedDay] of Object.entries(legacyDiary)) {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-            throw new Error('Een eerder opgeslagen dag heeft een ongeldige datum.');
-        }
-        try {
-            await apiRequest(`/api/days/${date}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(normalizeDay(savedDay))
-            });
-        } catch (error) {
-            if (error.status !== 409) throw error;
-        }
-    }
-    localStorage.removeItem(storageKey);
 }
 
 function plainTextOverview() {
@@ -778,16 +433,15 @@ async function copyOverview() {
 }
 
 function openDocument() {
+    scheduleSave();
     const exportWindow = window.open('about:blank', '_blank');
     if (!exportWindow) {
         saveStatus.textContent = 'Sta pop-ups toe om het overzicht te openen';
         return;
     }
-    flushQueuedSave().then(() => writeChain).then(() => {
-        const exportUrl = new URL('export.html', document.baseURI);
-        exportUrl.searchParams.set('date', dateInput.value);
-        exportWindow.location.href = exportUrl.href;
-    });
+    const exportUrl = new URL('export.html', document.baseURI);
+    exportUrl.searchParams.set('date', dateInput.value);
+    exportWindow.location.href = exportUrl.href;
 }
 
 const pageQuery = new URLSearchParams(location.search);
@@ -795,11 +449,6 @@ const requestedDate = pageQuery.get('date');
 dateInput.value = requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)
     ? requestedDate
     : localDateString(new Date());
-const isAppLaunch = isIosDevice() && isInstalledApp();
-installScreen.hidden = false;
-diaryApp.hidden = true;
-logoutButton.hidden = true;
-iosInstallInstructions.hidden = !isIosDevice();
 
 mealList.addEventListener('input', scheduleSave);
 mealList.addEventListener('change', scheduleSave);
@@ -824,22 +473,6 @@ document.getElementById('close-copy-button').addEventListener('click', () => {
     document.getElementById('copy-preview').hidden = true;
 });
 document.getElementById('open-document-button').addEventListener('click', openDocument);
-notificationToggle.addEventListener('click', async () => {
-    notificationToggle.disabled = true;
-    try {
-        if (notificationSettings.enabled) {
-            await disablePushNotifications();
-        } else {
-            await enablePushNotifications();
-        }
-    } catch (error) {
-        notificationStatus.textContent = error.message;
-        console.error('Pushmeldingen konden niet worden ingeschakeld.', error);
-    } finally {
-        notificationToggle.disabled = false;
-    }
-});
-notificationReminders.addEventListener('change', handleNotificationSettingsChange);
 pageTabs.forEach((tab, index) => {
     tab.addEventListener('click', () => activatePageTab(tab));
     tab.addEventListener('keydown', event => {
@@ -856,115 +489,22 @@ pageTabs.forEach((tab, index) => {
     });
 });
 document.getElementById('share-app-button').addEventListener('click', shareAppLink);
-document.getElementById('share-install-link-button').addEventListener('click', () => {
-    shareAppLink(installAppLinkStatus);
-});
-authForm.addEventListener('submit', async event => {
-    event.preventDefault();
-    const submitButton = authForm.querySelector('button[type="submit"]');
-    submitButton.disabled = true;
-    authStatus.textContent = 'Dev-code controleren…';
-    try {
-        await apiRequest('/api/dev/session', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code: authPassword.value })
-        });
-        authPassword.value = '';
-        showDiaryApp(true);
-    } catch (error) {
-        authStatus.textContent = error.message;
-        console.error('Developmenttoegang kon niet worden geopend.', error);
-    } finally {
-        submitButton.disabled = false;
-    }
-});
-logoutButton.addEventListener('click', async () => {
-    if (!isDevMode || isAppLaunch) return;
-    logoutButton.disabled = true;
-    try {
-        await flushQueuedSave();
-        await writeChain;
-        await apiRequest('/api/dev/session', { method: 'DELETE' });
-        isDevMode = false;
-        diaryApp.hidden = true;
-        installScreen.hidden = false;
-        authStatus.textContent = 'Je bent uitgelogd uit devmode.';
-        authPassword.focus();
-    } catch (error) {
-        saveStatus.textContent = `Uitloggen is niet gelukt: ${error.message}`;
-        console.error('Developmenttoegang kon niet worden afgesloten.', error);
-    } finally {
-        logoutButton.disabled = false;
-    }
-});
 
-async function startApp() {
+function startApp() {
     try {
-        await migrateLegacyData();
+        loadDay(dateInput.value);
+        refreshHistory();
     } catch (error) {
-        saveStatus.textContent = 'Overzetten oude gegevens mislukt';
-        saveStatus.title = `Oude gegevens zijn behouden in deze browser: ${error.message}`;
-        console.error('Eetdagboekgegevens konden niet worden overgezet.', error);
-    }
-
-    await loadDay(dateInput.value);
-    if (pageQuery.get('newDay') === '1') await createDay();
-    try {
-        await refreshHistory();
-    } catch (error) {
-        saveStatus.textContent = error.status === 404 ? 'Open de Node-site uit de terminal' : 'Server niet bereikbaar';
-        saveStatus.title = error.status === 404
-            ? 'De huidige preview-server heeft geen dagboek-API. Start npm start en open het netwerkadres dat in de terminal verschijnt.'
-            : `De daglijst kon niet worden geladen: ${error.message}`;
-        console.error('Eetdagboekserver is niet bereikbaar.', error);
+        saveStatus.textContent = 'Lokale opslag niet beschikbaar';
+        saveStatus.title = `Je dagboek kon niet uit deze browser worden gelezen: ${error.message}`;
+        console.error('Lokale dagboekopslag kon niet worden gelezen.', error);
     }
 }
 
-function showDiaryApp(devMode) {
-    isDevMode = devMode;
-    installScreen.hidden = true;
-    diaryApp.hidden = false;
-    logoutButton.hidden = !devMode;
-    if (appStarted) return;
-
-    appStarted = true;
-    render();
-    startApp();
-    if (isAppLaunch) initializeNotifications();
+if ('serviceWorker' in navigator && window.isSecureContext) {
+    navigator.serviceWorker.register('service-worker.js').catch(error => {
+        console.error('De offlinefunctie kon niet worden ingeschakeld.', error);
+    });
 }
 
-async function initializeEntry() {
-    if (location.hostname.endsWith('.github.io') && !window.EETDAGBOEK_API_BASE_URL) {
-        await prepareInstallScreen();
-        devAccess.hidden = true;
-        installScreenIntro.textContent = 'GitHub Pages kan alleen de website tonen. Voor laden en opslaan is een aparte Node-API nodig.';
-        installScreenStatus.textContent = 'Vul de HTTPS-URL van je Node-API in config.js in en laad de pagina opnieuw.';
-        return;
-    }
-
-    if (isAppLaunch || window.EETDAGBOEK_API_BASE_URL) {
-        showDiaryApp(false);
-        return;
-    }
-
-    await prepareInstallScreen();
-    try {
-        const session = await apiRequest('/api/dev/session');
-        devAccess.hidden = !session.enabled;
-        if (!session.enabled) {
-            if (!isIosDevice()) {
-                installScreenIntro.textContent = 'De app is voorlopig alleen beschikbaar op iPhone en iPad.';
-                installScreenStatus.textContent = 'Developmenttoegang is uitgeschakeld op deze server.';
-            }
-            return;
-        }
-        if (session.unlocked) showDiaryApp(true);
-    } catch (error) {
-        devAccess.hidden = false;
-        authStatus.textContent = `Devmode kon niet worden gecontroleerd: ${error.message}`;
-        console.error('Developmenttoegang kon niet worden gecontroleerd.', error);
-    }
-}
-
-initializeEntry();
+startApp();
