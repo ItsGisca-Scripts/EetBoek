@@ -935,6 +935,14 @@ function showDiaryApp(devMode) {
 }
 
 async function initializeEntry() {
+    if (location.hostname.endsWith('.github.io') && !window.EETDAGBOEK_API_BASE_URL) {
+        await prepareInstallScreen();
+        devAccess.hidden = true;
+        installScreenIntro.textContent = 'GitHub Pages kan alleen de website tonen. Voor laden en opslaan is een aparte Node-API nodig.';
+        installScreenStatus.textContent = 'Vul de HTTPS-URL van je Node-API in config.js in en laad de pagina opnieuw.';
+        return;
+    }
+
     if (isAppLaunch || window.EETDAGBOEK_API_BASE_URL) {
         showDiaryApp(false);
         return;

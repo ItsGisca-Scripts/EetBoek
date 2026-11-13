@@ -4,6 +4,7 @@ const path = require('node:path');
 const { createHash, randomInt, randomUUID, timingSafeEqual } = require('node:crypto');
 const os = require('node:os');
 require('dotenv').config({ path: path.join(__dirname, '.env.local') });
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 const mysql = require('mysql2/promise');
 const webPush = require('web-push');
 
@@ -85,26 +86,38 @@ function send(response, status, payload, headers = {}) {
 function getCorsHeaders(request) {
     const origin = request.headers.origin;
     if (!origin) return {};
+    const normalizedOrigin = normalizeOrigin(origin);
+    if (!normalizedOrigin) return null;
 
     const forwardedProtocol = request.headers['x-forwarded-proto'];
     const protocol = typeof forwardedProtocol === 'string'
         ? forwardedProtocol.split(',')[0].trim()
         : request.socket && request.socket.encrypted ? 'https' : 'http';
-    const requestOrigin = `${protocol}://${request.headers.host || 'localhost'}`;
-    if (origin === requestOrigin) return {};
+    const requestOrigin = normalizeOrigin(`${protocol}://${request.headers.host || 'localhost'}`);
+    if (normalizedOrigin === requestOrigin) return {};
 
     const allowedOrigins = (process.env.CORS_ORIGINS || '')
         .split(',')
         .map(value => value.trim())
+        .map(normalizeOrigin)
         .filter(Boolean);
-    if (!allowedOrigins.includes(origin)) return null;
+    if (!allowedOrigins.includes(normalizedOrigin)) return null;
     return {
-        'Access-Control-Allow-Origin': origin,
+        'Access-Control-Allow-Origin': normalizedOrigin,
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type',
         'Access-Control-Max-Age': '600',
         Vary: 'Origin'
     };
+}
+
+function normalizeOrigin(value) {
+    try {
+        const origin = new URL(value).origin;
+        return origin === 'null' ? null : origin;
+    } catch {
+        return null;
+    }
 }
 
 function getMysqlPool() {
@@ -657,6 +670,7 @@ async function handleRequest(request, response) {
                 response.end();
                 return;
             }
+            if (url.pathname.startsWith('/api/push/')) await ensureVapidKeys();
             if (await handleDevSessionApi(request, response, url)) return;
             if (await handlePushApi(request, response, url)) return;
             if (await handleApi(request, response, url)) return;
@@ -714,9 +728,11 @@ async function handleRequest(request, response) {
 }
 
 async function startServer() {
-    await ensureVapidKeys();
     await ensureDevCode();
     if (mysqlUrl) await getMysqlPool().query('SELECT 1');
+    if (!mysqlUrl || (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY)) {
+        await ensureVapidKeys();
+    }
     const server = http.createServer(handleRequest);
     server.listen(port, host, () => {
         const accessHost = host === '0.0.0.0' ? getLanAddress() : host;
@@ -725,10 +741,14 @@ async function startServer() {
             ? 'Dagboekgegevens en pushinstellingen worden in MySQL opgeslagen.'
             : `Dagbestanden en pushinstellingen staan in ${dataDirectory}`);
     });
-    const reminderTimer = setInterval(() => {
-        sendDueReminders().catch(error => console.error('Pushherinneringen konden niet worden verwerkt.', error));
-    }, 30_000);
-    reminderTimer.unref();
+    if (vapidKeys) {
+        const reminderTimer = setInterval(() => {
+            sendDueReminders().catch(error => console.error('Pushherinneringen konden niet worden verwerkt.', error));
+        }, 30_000);
+        reminderTimer.unref();
+    } else {
+        console.warn('Pushherinneringen zijn uitgeschakeld; stel eerst de VAPID-sleutels in.');
+    }
 }
 
 startServer().catch(error => {
