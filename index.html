@@ -14,7 +14,33 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <main class="app" id="diary-app">
+    <main class="install-screen panel" id="install-screen">
+        <img src="icon-192.png" class="install-logo" alt="">
+        <p class="eyebrow">MIJN EETDAGBOEK</p>
+        <h1>Gebruik het dagboek als app</h1>
+        <p class="install-intro">Voeg deze site toe aan je beginscherm om hem als app te openen. In een gewone browser kun je het dagboek openen met de devmode-code.</p>
+        <section class="install-instructions" id="ios-install-instructions">
+            <h2>Op een iPhone of iPad</h2>
+            <ol>
+                <li>Open deze site in Safari.</li>
+                <li>Tik op <strong>Deel</strong> en kies <strong>Zet op beginscherm</strong>.</li>
+                <li>Open het dagboek via het nieuwe icoon.</li>
+            </ol>
+        </section>
+        <section class="dev-access" id="dev-access">
+            <h2>Devmode</h2>
+            <p>Vul de code in om het dagboek in deze browser te openen.</p>
+            <form class="auth-form" id="auth-form">
+                <label for="auth-password">Devmode-code</label>
+                <input id="auth-password" type="password" autocomplete="off" required>
+                <button class="button button-primary" type="submit">Open devmode</button>
+            </form>
+            <p class="notification-status">Dit code-scherm is alleen een eenvoudige drempel. De code staat in de publieke websitecode en biedt geen echte beveiliging.</p>
+            <p class="notification-status" id="auth-status" role="status"></p>
+        </section>
+    </main>
+
+    <main class="app" id="diary-app" hidden>
         <header class="topbar">
             <a class="brand" href="#" aria-label="Mijn eetdagboek">
                 <img src="icon-192.png" class="brand-icon" aria-hidden="true">
@@ -133,9 +159,14 @@
                     </div>
                     <div class="notification-actions">
                         <button class="button button-secondary" id="share-app-button" type="button">Deel app-link</button>
+                        <button class="button button-secondary" id="backup-button" type="button">Download reservekopie</button>
+                        <label class="button button-secondary" for="import-day-file">Dagbestand importeren</label>
+                        <input id="import-day-file" type="file" accept=".json,application/json" hidden>
+                        <button class="button button-secondary" id="logout-button" type="button" hidden>Uitloggen uit devmode</button>
                     </div>
                 </div>
                 <p class="notification-status" id="app-link-status" role="status" hidden></p>
+                <p class="notification-status" id="backup-status" role="status"></p>
                 <details class="install-help" id="install-help">
                     <summary>De app op een iPhone zetten</summary>
                     <ol>

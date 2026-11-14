@@ -136,6 +136,156 @@ function renderDocument(date, day) {
     document.getElementById('document-status').textContent = 'Dagoverzicht geopend';
 }
 
+function wrapCanvasText(context, value, maxWidth) {
+    const words = value.trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return [''];
+
+    const lines = [];
+    let line = '';
+    words.forEach(word => {
+        const candidate = line ? `${line} ${word}` : word;
+        if (context.measureText(candidate).width <= maxWidth || !line) {
+            line = candidate;
+        } else {
+            lines.push(line);
+            line = word;
+        }
+    });
+    lines.push(line);
+    return lines;
+}
+
+function rowText(row) {
+    return Array.from(row.cells, cell => (cell.innerText || cell.textContent).replace(/\s+/g, ' ').trim());
+}
+
+async function saveTableImage() {
+    const button = document.getElementById('save-image-button');
+    const status = document.getElementById('document-status');
+    button.disabled = true;
+    status.textContent = 'Afbeelding maken…';
+
+    try {
+        const table = document.querySelector('.table-scroll table');
+        if (!table) throw new Error('De dagtabel is niet beschikbaar.');
+
+        const headers = Array.from(table.querySelectorAll('thead th'), cell => cell.innerText.trim());
+        const rows = [
+            ...Array.from(table.querySelectorAll('tbody tr'), rowText),
+            ...Array.from(table.querySelectorAll('tfoot tr'), rowText)
+        ];
+        const columnCount = headers.length;
+        if (!columnCount) throw new Error('De dagtabel bevat geen kolommen.');
+
+        const scale = 2;
+        const padding = 36;
+        const tableWidth = 2100;
+        const columnWidth = tableWidth / columnCount;
+        const cellPadding = 12;
+        const lineHeight = 22;
+        const measureCanvas = document.createElement('canvas');
+        const measureContext = measureCanvas.getContext('2d');
+        if (!measureContext) throw new Error('Afbeeldingen maken wordt niet ondersteund in deze browser.');
+
+        function prepareRow(cells, font) {
+            measureContext.font = font;
+            const lines = cells.map(text => wrapCanvasText(
+                measureContext,
+                text,
+                columnWidth - cellPadding * 2
+            ));
+            return {
+                lines,
+                height: Math.max(72, ...lines.map(value => value.length * lineHeight + cellPadding * 2))
+            };
+        }
+
+        const header = prepareRow(headers, 'bold 16px Arial');
+        const body = rows.map((row, index) => prepareRow(
+            row,
+            index === rows.length - 1 ? 'bold 14px Arial' : '14px Arial'
+        ));
+        const title = document.querySelector('.document-header h1').innerText;
+        const date = document.getElementById('document-date').innerText;
+        const notes = document.getElementById('day-notes');
+        const notesText = notes.hidden ? '' : document.getElementById('day-notes-text').innerText;
+        const titleHeight = 86;
+        const notesHeight = notesText ? 100 + Math.ceil(notesText.length / 120) * lineHeight : 0;
+        const imageWidth = tableWidth + padding * 2;
+        const imageHeight = padding * 2 + titleHeight + header.height +
+            body.reduce((height, row) => height + row.height, 0) + notesHeight;
+        const canvas = document.createElement('canvas');
+        canvas.width = imageWidth * scale;
+        canvas.height = imageHeight * scale;
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('Afbeeldingen maken wordt niet ondersteund in deze browser.');
+        context.scale(scale, scale);
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, imageWidth, imageHeight);
+
+        context.fillStyle = '#376c55';
+        context.font = 'bold 30px Arial';
+        context.fillText(title, padding, padding + 34);
+        context.fillStyle = '#25372e';
+        context.font = '14px Arial';
+        context.fillText(date, padding, padding + 61);
+
+        function drawRow(prepared, y, isHeader, isTotal) {
+            let x = padding;
+            prepared.lines.forEach(lines => {
+                context.fillStyle = isHeader ? '#f6f7f5' : isTotal ? '#fafbf9' : '#ffffff';
+                context.fillRect(x, y, columnWidth, prepared.height);
+                context.strokeStyle = '#879189';
+                context.lineWidth = 1;
+                context.strokeRect(x, y, columnWidth, prepared.height);
+                context.fillStyle = '#25372e';
+                context.font = isHeader
+                    ? 'bold 16px Arial'
+                    : isTotal ? 'bold 14px Arial' : '14px Arial';
+                lines.forEach((line, index) => {
+                    context.fillText(line, x + cellPadding, y + cellPadding + 16 + index * lineHeight);
+                });
+                x += columnWidth;
+            });
+        }
+
+        let y = padding + titleHeight;
+        drawRow(header, y, true, false);
+        y += header.height;
+        body.forEach((row, index) => {
+            drawRow(row, y, false, index === body.length - 1);
+            y += row.height;
+        });
+
+        if (notesText) {
+            y += 20;
+            context.fillStyle = '#25372e';
+            context.font = 'bold 16px Arial';
+            context.fillText('Notities over de dag', padding, y + 18);
+            context.font = '14px Arial';
+            wrapCanvasText(context, notesText, tableWidth).forEach((line, index) => {
+                context.fillText(line, padding, y + 44 + index * lineHeight);
+            });
+        }
+
+        const image = await new Promise((resolve, reject) => {
+            canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('De afbeelding kon niet worden gemaakt.')), 'image/png');
+        });
+        const imageUrl = URL.createObjectURL(image);
+        const link = document.createElement('a');
+        link.href = imageUrl;
+        link.download = `eetdagboek-${new URLSearchParams(location.search).get('date')}.png`;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(imageUrl), 1000);
+        status.textContent = 'Afbeelding opgeslagen.';
+    } catch (error) {
+        status.textContent = error.message;
+        console.error('De dagtabel kon niet als afbeelding worden opgeslagen.', error);
+    } finally {
+        button.disabled = false;
+    }
+}
+
 async function loadDocument() {
     const date = new URLSearchParams(location.search).get('date');
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -150,6 +300,8 @@ async function loadDocument() {
     day = days[date] || { meals: {}, notes: '', stoolType: null };
     renderDocument(date, day);
 }
+
+document.getElementById('save-image-button').addEventListener('click', saveTableImage);
 
 loadDocument().catch(error => {
     document.getElementById('document-status').textContent = error.message;

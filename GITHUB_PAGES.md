@@ -2,12 +2,18 @@
 
 De website werkt volledig statisch op GitHub Pages. Er is geen server nodig.
 
-## Opslag
+## Opslag en reservekopieën
 
-Elke datum wordt apart opgeslagen in de browser van dit apparaat. Wijzigingen worden direct bewaard; als je een andere dag opent of een nieuwe dag aanmaakt, blijven eerdere dagen beschikbaar via **Eerdere dagen bekijken**.
+Elke datum wordt direct in de browser van dit apparaat opgeslagen. Bij het openen of aanmaken van een andere dag blijft de vorige dag behouden in **Eerdere dagen bekijken**. De gegevens worden niet gedeeld of gesynchroniseerd. Wis de browsergegevens van de site niet.
 
-De gegevens worden niet gedeeld of gesynchroniseerd met andere apparaten. Wis de browsergegevens voor deze website niet, want dan worden ook de opgeslagen dagen verwijderd. Maak eventueel regelmatig een dagoverzicht als reservekopie.
+Open **App gebruiken** om alle dagen als JSON-reservekopie te downloaden of een eerder dagbestand te importeren. In het dagoverzicht kun je de tabel ook als PNG-afbeelding opslaan.
+
+## Browser en devmode
+
+In een gewone browser verschijnt eerst het installatiescherm. Voer daar `devmode` in om de app in die browsersessie te openen; **Uitloggen uit devmode** staat daarna onder **App gebruiken**. Een geïnstalleerde app opent direct.
+
+Dit is alleen een eenvoudige schermblokkade. Omdat GitHub Pages statische bestanden openbaar levert, is de code uit de websitebestanden te achterhalen en biedt deze geen echte toegangsbeveiliging.
 
 ## Publiceren
 
-Push de repository naar GitHub en schakel Pages in via **Settings → Pages**. Open daarna de Pages-URL; de app opent direct en slaat lokaal op.
+Push de repository naar GitHub en schakel Pages in via **Settings → Pages**. Browseropslag is per browser en apparaat; oude dagen op een ander apparaat kun je met een JSON-dagbestand importeren.

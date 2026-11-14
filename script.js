@@ -25,16 +25,32 @@ const notesInput = document.getElementById('day-notes');
 const stoolTypesElement = document.getElementById('stool-types');
 const saveStatus = document.getElementById('save-status');
 const appLinkStatus = document.getElementById('app-link-status');
+const backupStatus = document.getElementById('backup-status');
+const installScreen = document.getElementById('install-screen');
+const diaryApp = document.getElementById('diary-app');
+const authForm = document.getElementById('auth-form');
+const authPassword = document.getElementById('auth-password');
+const authStatus = document.getElementById('auth-status');
+const logoutButton = document.getElementById('logout-button');
 const pageTabs = Array.from(document.querySelectorAll('.page-tab'));
 const pagePanels = Array.from(document.querySelectorAll('.tab-panel'));
 let activeDay = blankDay();
 let activeDate = '';
+let appStarted = false;
+let isDevMode = false;
+const devModeCode = 'devmode';
 
 function localDateString(date) {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+}
+
+function isValidDate(value) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const date = new Date(`${value}T00:00:00Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
 function activatePageTab(tab) {
@@ -118,6 +134,80 @@ function readLocalDays() {
 
 function writeLocalDays(days) {
     localStorage.setItem(diaryStorageKey, JSON.stringify(days));
+}
+
+function downloadBackup() {
+    try {
+        const days = readLocalDays();
+        if (!Object.keys(days).length) {
+            backupStatus.textContent = 'Er zijn nog geen opgeslagen dagen om te downloaden.';
+            return;
+        }
+        const backup = new Blob([JSON.stringify(days, null, 2)], { type: 'application/json' });
+        const backupUrl = URL.createObjectURL(backup);
+        const link = document.createElement('a');
+        link.href = backupUrl;
+        link.download = 'eetdagboek-reservekopie.json';
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(backupUrl), 1000);
+        backupStatus.textContent = 'Reservekopie gedownload.';
+    } catch (error) {
+        backupStatus.textContent = `Reservekopie maken is mislukt: ${error.message}`;
+        console.error('Eetdagboekreservekopie kon niet worden gemaakt.', error);
+    }
+}
+
+async function importDayFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const dateMatch = file.name.match(/\d{4}-\d{2}-\d{2}/);
+
+    try {
+        const importedData = JSON.parse(await file.text());
+        if (!importedData || typeof importedData !== 'object' || Array.isArray(importedData)) {
+            throw new Error('Dit bestand bevat geen dagboekgegevens.');
+        }
+        if (!saveCurrentDay()) return;
+        const days = readLocalDays();
+        let entries;
+        if (importedData.meals && typeof importedData.meals === 'object') {
+            const date = dateMatch ? dateMatch[0] : dateInput.value;
+            if (!isValidDate(date)) throw new Error('De datum voor deze dag is ongeldig.');
+            entries = [[date, importedData]];
+        } else {
+            entries = Object.entries(importedData);
+            if (!entries.length || entries.some(([date, day]) =>
+                !isValidDate(date) || !day || typeof day !== 'object' ||
+                !day.meals || typeof day.meals !== 'object')) {
+                throw new Error('Dit bestand bevat geen geldige reservekopie.');
+            }
+        }
+
+        const conflicts = entries.filter(([date]) =>
+            Object.prototype.hasOwnProperty.call(days, date));
+        if (conflicts.length && !window.confirm(
+            `${conflicts.length} ${conflicts.length === 1 ? 'dag bestaat' : 'dagen bestaan'} al. Wil je die vervangen?`
+        )) {
+            return;
+        }
+        entries.forEach(([date, day]) => {
+            days[date] = normalizeDay(day);
+        });
+        writeLocalDays(days);
+        const selectedDate = dateMatch && entries.some(([date]) => date === dateMatch[0])
+            ? dateMatch[0]
+            : entries[0][0];
+        activeDate = '';
+        dateInput.value = selectedDate;
+        loadDay(selectedDate);
+        refreshHistory();
+        backupStatus.textContent = `${entries.length} ${entries.length === 1 ? 'dag geïmporteerd' : 'dagen geïmporteerd'}.`;
+    } catch (error) {
+        backupStatus.textContent = `Dagbestand importeren is mislukt: ${error.message}`;
+        console.error('Dagbestand kon niet worden geïmporteerd.', error);
+    } finally {
+        event.target.value = '';
+    }
 }
 
 function normalizeDay(savedDay) {
@@ -473,6 +563,8 @@ document.getElementById('close-copy-button').addEventListener('click', () => {
     document.getElementById('copy-preview').hidden = true;
 });
 document.getElementById('open-document-button').addEventListener('click', openDocument);
+document.getElementById('backup-button').addEventListener('click', downloadBackup);
+document.getElementById('import-day-file').addEventListener('change', importDayFile);
 pageTabs.forEach((tab, index) => {
     tab.addEventListener('click', () => activatePageTab(tab));
     tab.addEventListener('keydown', event => {
@@ -489,6 +581,27 @@ pageTabs.forEach((tab, index) => {
     });
 });
 document.getElementById('share-app-button').addEventListener('click', shareAppLink);
+authForm.addEventListener('submit', event => {
+    event.preventDefault();
+    if (authPassword.value !== devModeCode) {
+        authStatus.textContent = 'De code klopt niet.';
+        authPassword.select();
+        return;
+    }
+    authPassword.value = '';
+    authStatus.textContent = '';
+    showDiaryApp(true);
+});
+
+logoutButton.addEventListener('click', () => {
+    if (!isDevMode) return;
+    isDevMode = false;
+    appStarted = false;
+    diaryApp.hidden = true;
+    installScreen.hidden = false;
+    logoutButton.hidden = true;
+    authStatus.textContent = 'Je bent uitgelogd uit devmode.';
+});
 
 function startApp() {
     try {
@@ -501,10 +614,25 @@ function startApp() {
     }
 }
 
+function showDiaryApp(devMode) {
+    isDevMode = devMode;
+    installScreen.hidden = true;
+    diaryApp.hidden = false;
+    logoutButton.hidden = !devMode;
+    if (appStarted) return;
+    appStarted = true;
+    startApp();
+}
+
+function isInstalledApp() {
+    return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+        navigator.standalone === true;
+}
+
 if ('serviceWorker' in navigator && window.isSecureContext) {
     navigator.serviceWorker.register('service-worker.js').catch(error => {
         console.error('De offlinefunctie kon niet worden ingeschakeld.', error);
     });
 }
 
-startApp();
+if (isInstalledApp()) showDiaryApp(false);
