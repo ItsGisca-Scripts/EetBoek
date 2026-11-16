@@ -18,6 +18,11 @@ const stoolTypes = [
 ];
 
 const sessionStorageKey = 'eetdagboek-session-v1';
+const isTestEnvironment = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(location.hostname);
+const isIosDevice = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isStandaloneApp = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+    navigator.standalone === true;
 const dateInput = document.getElementById('diary-date');
 const historySelect = document.getElementById('history-select');
 const mealList = document.getElementById('meal-list');
@@ -30,14 +35,25 @@ const diaryApp = document.getElementById('diary-app');
 const authForm = document.getElementById('auth-form');
 const authPassword = document.getElementById('auth-password');
 const authStatus = document.getElementById('auth-status');
+const loginLoading = document.getElementById('login-loading');
 const logoutButton = document.getElementById('logout-button');
 const adminPanel = document.getElementById('admin-panel');
 const adminUserList = document.getElementById('admin-user-list');
 const adminStatus = document.getElementById('admin-status');
+const changeLogForm = document.getElementById('change-log-form');
+const changeLogList = document.getElementById('change-log-list');
+const changeLogStatus = document.getElementById('change-log-status');
+const newChangesDialog = document.getElementById('new-changes-dialog');
+const newChangesList = document.getElementById('new-changes-list');
+const newChangesStatus = document.getElementById('new-changes-status');
+const acknowledgeChangesButton = document.getElementById('acknowledge-changes-button');
 const generatedCodePanel = document.getElementById('generated-code-panel');
 const generatedUserCode = document.getElementById('generated-user-code');
 const pageTabs = Array.from(document.querySelectorAll('.page-tab'));
 const pagePanels = Array.from(document.querySelectorAll('.tab-panel'));
+document.querySelectorAll('.ios-install-guide').forEach(guide => {
+    guide.hidden = !isIosDevice || isStandaloneApp;
+});
 let activeDay = blankDay();
 let activeDate = '';
 let appStarted = false;
@@ -49,6 +65,13 @@ let pendingSave = null;
 let saveQueue = Promise.resolve();
 let saveRevision = 0;
 let saveError = null;
+let changeLog = [];
+let unreadChangeIds = [];
+
+function setLoginLoading(loading) {
+    loginLoading.hidden = !loading;
+    authForm.querySelector('button[type="submit"]').disabled = loading;
+}
 
 function localDateString(date) {
     const year = date.getFullYear();
@@ -103,6 +126,9 @@ function blankDay() {
 }
 
 async function apiRequest(path, options = {}) {
+    if (isTestEnvironment) {
+        throw new Error('API-verzoeken zijn uitgeschakeld in de lokale testomgeving.');
+    }
     const headers = { 'Content-Type': 'application/json' };
     if (sessionToken) headers.Authorization = `Bearer ${sessionToken}`;
     const response = await fetch(path, {
@@ -125,6 +151,12 @@ async function writeCloudDays(entries) {
         date: entry.date,
         data: normalizeDay(entry.data)
     }));
+    if (isTestEnvironment) {
+        normalizedEntries.forEach(entry => {
+            savedDays[entry.date] = entry.data;
+        });
+        return;
+    }
     await apiRequest('/api/days', {
         method: 'POST',
         body: JSON.stringify({ entries: normalizedEntries })
@@ -330,6 +362,12 @@ function collectDay() {
 function queueSave(date, day) {
     const revision = ++saveRevision;
     saveError = null;
+    if (isTestEnvironment) {
+        savedDays[date] = day;
+        saveStatus.textContent = 'Testmodus — niet opgeslagen';
+        refreshHistory();
+        return Promise.resolve(true);
+    }
     saveQueue = saveQueue.then(async () => {
         await apiRequest('/api/days', {
             method: 'POST',
@@ -361,6 +399,14 @@ function scheduleSave() {
         return;
     }
     savedDays[date] = activeDay;
+    if (isTestEnvironment) {
+        pendingSave = null;
+        window.clearTimeout(pendingSaveTimer);
+        saveStatus.textContent = 'Testmodus — niet opgeslagen';
+        saveStatus.title = 'Testgegevens bestaan alleen totdat je de pagina herlaadt.';
+        refreshHistory();
+        return;
+    }
     pendingSave = { date, day: activeDay };
     saveRevision += 1;
     saveError = null;
@@ -390,6 +436,7 @@ async function saveCurrentDay() {
     if (!activeDate) return true;
     activeDay = collectDay();
     savedDays[activeDate] = activeDay;
+    if (isTestEnvironment) return true;
     pendingSave = { date: activeDate, day: activeDay };
     return flushSave();
 }
@@ -442,7 +489,15 @@ async function loadDay(date) {
         activeDay = normalizeDay(savedDay);
         activeDate = date;
         render();
-        saveStatus.textContent = savedDay ? 'Dag uit de cloud geladen' : 'Nieuwe dag, nog niet opgeslagen';
+        if (isTestEnvironment) {
+            saveStatus.textContent = savedDay
+                ? 'Testdag geladen — niet opgeslagen'
+                : 'Nieuwe testdag — niet opgeslagen';
+        } else {
+            saveStatus.textContent = savedDay
+                ? 'Dag uit de cloud geladen'
+                : 'Nieuwe dag, nog niet opgeslagen';
+        }
         saveStatus.title = '';
     } catch (error) {
         if (activeDate) dateInput.value = activeDate;
@@ -575,7 +630,9 @@ notesInput.addEventListener('input', scheduleSave);
 mealList.addEventListener('click', event => {
     const button = event.target.closest('[data-meal][data-stool-type]');
     if (!button) return;
-    activeDay.meals[button.dataset.meal].stoolType = Number(button.dataset.stoolType);
+    const meal = activeDay.meals[button.dataset.meal];
+    const selectedType = Number(button.dataset.stoolType);
+    meal.stoolType = meal.stoolType === selectedType ? null : selectedType;
     render();
     scheduleSave();
 });
@@ -613,10 +670,18 @@ pageTabs.forEach(tab => {
 });
 authForm.addEventListener('submit', async event => {
     event.preventDefault();
-    authStatus.textContent = 'Bezig met inloggen…';
+    authStatus.textContent = '';
     const submitButton = authForm.querySelector('button[type="submit"]');
-    submitButton.disabled = true;
+    setLoginLoading(true);
     try {
+        if (isTestEnvironment) {
+            await new Promise(resolve => window.setTimeout(resolve, 500));
+            sessionRole = 'test';
+            authPassword.value = '';
+            authStatus.textContent = '';
+            await showDiaryApp('Testgebruiker');
+            return;
+        }
         const result = await apiRequest('/api/auth/login', {
             method: 'POST',
             body: JSON.stringify({ code: authPassword.value })
@@ -628,6 +693,7 @@ authForm.addEventListener('submit', async event => {
         authStatus.textContent = '';
         await showDiaryApp(result.name);
     } catch (error) {
+        setLoginLoading(false);
         authStatus.textContent = error.message;
         authPassword.select();
         console.error('Inloggen is mislukt.', error);
@@ -639,12 +705,13 @@ authForm.addEventListener('submit', async event => {
 logoutButton.addEventListener('click', async () => {
     if (!await saveCurrentDay() &&
         !window.confirm('Je laatste wijzigingen zijn niet opgeslagen. Wil je toch uitloggen?')) return;
-    localStorage.removeItem(sessionStorageKey);
+    if (!isTestEnvironment) localStorage.removeItem(sessionStorageKey);
     sessionToken = '';
     sessionRole = '';
     appStarted = false;
     diaryApp.hidden = true;
     installScreen.hidden = false;
+    loginLoading.hidden = true;
     logoutButton.hidden = true;
     adminPanel.hidden = true;
     generatedCodePanel.hidden = true;
@@ -657,11 +724,20 @@ logoutButton.addEventListener('click', async () => {
     refreshHistory();
     document.getElementById('diary-tab').hidden = false;
     activatePageTab(document.getElementById('diary-tab'));
-    authStatus.textContent = 'Je bent uitgelogd.';
+    authStatus.textContent = isTestEnvironment
+        ? 'Terug naar het testinlogscherm. Vernieuwen wist testgegevens.'
+        : 'Je bent uitgelogd.';
 });
 
 async function startApp() {
     try {
+        if (isTestEnvironment) {
+            savedDays = {};
+            await loadDay(dateInput.value);
+            refreshHistory();
+            saveStatus.textContent = 'Testmodus — niet opgeslagen';
+            return;
+        }
         const result = await apiRequest('/api/days');
         savedDays = {};
         result.entries.forEach(entry => {
@@ -697,12 +773,111 @@ async function loadAdminUsers() {
     });
 }
 
+function makeChangeListItem(change) {
+    const item = document.createElement('li');
+    const title = document.createElement('h3');
+    title.textContent = change.title;
+    const date = document.createElement('time');
+    date.dateTime = change.created_at;
+    date.textContent = new Intl.DateTimeFormat('nl-NL', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+    }).format(new Date(change.created_at));
+    const message = document.createElement('p');
+    message.textContent = change.message;
+    item.append(title, date, message);
+    return item;
+}
+
+function renderChangeLog() {
+    changeLogList.replaceChildren();
+    changeLog.forEach(change => changeLogList.appendChild(makeChangeListItem(change)));
+    changeLogStatus.textContent = changeLog.length
+        ? ''
+        : 'Er zijn nog geen veranderingen gepubliceerd.';
+}
+
+async function loadChangeLog() {
+    const result = await apiRequest('/api/changes');
+    if (!Array.isArray(result.changes)) throw new Error('De veranderingen konden niet worden gelezen.');
+    changeLog = result.changes;
+    renderChangeLog();
+    return changeLog.filter(change => !change.seen);
+}
+
+function showNewChanges(changes) {
+    unreadChangeIds = changes.map(change => change.id);
+    newChangesList.replaceChildren(...changes.map(makeChangeListItem));
+    newChangesStatus.textContent = '';
+    newChangesDialog.showModal();
+    acknowledgeChangesButton.focus();
+}
+
+async function acknowledgeNewChanges() {
+    acknowledgeChangesButton.disabled = true;
+    newChangesStatus.textContent = 'Wordt opgeslagen…';
+    try {
+        await apiRequest('/api/changes/read', {
+            method: 'POST',
+            body: JSON.stringify({ changeIds: unreadChangeIds })
+        });
+        const acknowledgedIds = new Set(unreadChangeIds);
+        changeLog = changeLog.map(change => acknowledgedIds.has(change.id)
+            ? { ...change, seen: true }
+            : change);
+        unreadChangeIds = [];
+        renderChangeLog();
+        newChangesDialog.close();
+    } catch (error) {
+        newChangesStatus.textContent = `De wijzigingen zijn nog niet als gelezen opgeslagen: ${error.message}`;
+        console.error('De gelezen changelog-items konden niet worden opgeslagen.', error);
+    } finally {
+        acknowledgeChangesButton.disabled = false;
+    }
+}
+
+function greetingForTime() {
+    const hour = new Date().getHours();
+    if (hour < 5 || hour >= 22) return 'Goedenacht';
+    if (hour < 12) return 'Goedemorgen';
+    if (hour < 18) return 'Goedemiddag';
+    return 'Goedenavond';
+}
+
 async function showDiaryApp(name) {
     logoutButton.hidden = false;
     adminPanel.hidden = sessionRole !== 'admin';
+    changeLogForm.hidden = sessionRole !== 'admin';
     document.getElementById('account-name').textContent = name || '';
+    document.getElementById('greeting').textContent = greetingForTime();
+    document.getElementById('greeting-name').textContent = name || '';
     if (appStarted) return;
     appStarted = true;
+    if (isTestEnvironment) {
+        document.body.classList.add('test-mode');
+        document.getElementById('test-mode-banner').hidden = false;
+        document.querySelector('.intro-copy').textContent =
+            'In deze testmodus blijven je wijzigingen alleen tijdelijk in het geheugen.';
+        document.getElementById('notification-copy').textContent =
+            'Lokale testomgeving: gegevens blijven alleen tijdelijk in het geheugen en worden nergens opgeslagen.';
+        document.getElementById('storage-status').textContent =
+            'Testmodus — vernieuwen of sluiten wist alle ingevoerde gegevens.';
+        document.getElementById('backup-button').hidden = true;
+        document.querySelector('label[for="import-day-file"]').hidden = true;
+        document.getElementById('open-document-button').hidden = true;
+        logoutButton.hidden = false;
+        logoutButton.textContent = 'Terug naar inlogscherm';
+        adminPanel.hidden = true;
+        changeLogForm.hidden = true;
+        changeLogStatus.textContent = 'Veranderingen zijn alleen beschikbaar in de liveversie.';
+        installScreen.hidden = true;
+        diaryApp.hidden = false;
+        document.getElementById('diary-tab').hidden = false;
+        activatePageTab(document.getElementById('diary-tab'));
+        await startApp();
+        return;
+    }
     if (sessionRole === 'admin') {
         installScreen.hidden = true;
         diaryApp.hidden = false;
@@ -713,26 +888,42 @@ async function showDiaryApp(name) {
         } catch (error) {
             adminStatus.textContent = `Gebruikers laden mislukt: ${error.message}`;
         }
+        try {
+            await loadChangeLog();
+        } catch (error) {
+            changeLogStatus.textContent = `Veranderingen laden mislukt: ${error.message}`;
+            console.error('De changelog kon niet worden geladen.', error);
+        }
         return;
     }
     document.getElementById('diary-tab').hidden = false;
     activatePageTab(document.getElementById('diary-tab'));
-    diaryApp.hidden = true;
-    installScreen.hidden = false;
-    authStatus.textContent = 'Je dagboek wordt geladen…';
+    setLoginLoading(true);
+    authStatus.textContent = '';
     try {
         await startApp();
-        authStatus.textContent = '';
-        installScreen.hidden = true;
-        diaryApp.hidden = false;
     } catch (error) {
+        setLoginLoading(false);
         appStarted = false;
         installScreen.hidden = false;
         authStatus.textContent = `Het dagboek kon niet worden geladen. Je wijzigingen zijn nog niet geopend: ${error.message}`;
+        return;
     }
+    let unreadChanges = [];
+    try {
+        unreadChanges = await loadChangeLog();
+    } catch (error) {
+        changeLogStatus.textContent = `Veranderingen laden mislukt: ${error.message}`;
+        console.error('De changelog kon niet worden geladen.', error);
+    }
+    setLoginLoading(false);
+    authStatus.textContent = '';
+    installScreen.hidden = true;
+    diaryApp.hidden = false;
+    if (unreadChanges.length) showNewChanges(unreadChanges);
 }
 
-if ('serviceWorker' in navigator && window.isSecureContext) {
+if (!isTestEnvironment && 'serviceWorker' in navigator && window.isSecureContext) {
     navigator.serviceWorker.register('service-worker.js').catch(error => {
         console.error('De app-shell kon niet worden bijgewerkt.', error);
     });
@@ -762,6 +953,32 @@ document.getElementById('create-user-form').addEventListener('submit', async eve
         button.disabled = false;
     }
 });
+
+changeLogForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (isTestEnvironment || sessionRole !== 'admin') return;
+    const titleInput = document.getElementById('change-title');
+    const messageInput = document.getElementById('change-message');
+    const button = changeLogForm.querySelector('button[type="submit"]');
+    button.disabled = true;
+    changeLogStatus.textContent = 'Verandering wordt gepubliceerd…';
+    try {
+        await apiRequest('/api/changes', {
+            method: 'POST',
+            body: JSON.stringify({ title: titleInput.value, message: messageInput.value })
+        });
+        changeLogForm.reset();
+        await loadChangeLog();
+        changeLogStatus.textContent = 'Verandering gepubliceerd.';
+    } catch (error) {
+        changeLogStatus.textContent = `Verandering publiceren mislukt: ${error.message}`;
+        console.error('De changelog kon niet worden bijgewerkt.', error);
+    } finally {
+        button.disabled = false;
+    }
+});
+
+acknowledgeChangesButton.addEventListener('click', acknowledgeNewChanges);
 
 adminUserList.addEventListener('click', async event => {
     const button = event.target.closest('[data-revoke-user]');
@@ -798,11 +1015,14 @@ async function resumeSession() {
         return;
     }
     if (!sessionToken) return;
+    setLoginLoading(true);
+    authStatus.textContent = '';
     try {
         const account = await apiRequest('/api/auth/me');
         sessionRole = account.role;
         await showDiaryApp(account.name);
     } catch (error) {
+        setLoginLoading(false);
         if (error.message.includes('Log opnieuw in') || error.message.includes('sessie') ||
             error.message.includes('ingetrokken')) {
             localStorage.removeItem(sessionStorageKey);
@@ -812,4 +1032,9 @@ async function resumeSession() {
     }
 }
 
-resumeSession();
+if (isTestEnvironment) {
+    document.getElementById('auth-help').textContent =
+        'Testmodus: vul een willekeurige code in om door te gaan. Er wordt niets opgeslagen.';
+} else {
+    resumeSession();
+}

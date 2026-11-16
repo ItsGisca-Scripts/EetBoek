@@ -287,6 +287,9 @@ async function saveTableImage() {
 }
 
 async function loadDocument() {
+    if (['localhost', '127.0.0.1', '::1', '[::1]'].includes(location.hostname)) {
+        throw new Error('Dagoverzicht-export is uitgeschakeld in de lokale testomgeving.');
+    }
     const date = new URLSearchParams(location.search).get('date');
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         throw new Error('De datum in de documentlink is ongeldig.');

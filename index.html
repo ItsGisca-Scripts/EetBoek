@@ -18,15 +18,28 @@
         <img src="icon-192.png" class="install-logo" alt="">
         <p class="eyebrow">MIJN EETDAGBOEK</p>
         <h1>Log in op je eetdagboek</h1>
-        <p class="install-intro">Gebruik de gebruikerscode die je van de beheerder hebt gekregen. Je blijft op dit apparaat ingelogd totdat je uitlogt of de beheerder je toegang intrekt.</p>
+        <p class="install-intro">Hier kan je inloggen met de code die je van Gijs hij blijft ingelogd tot je zelf uitlogd.</p>
+        <section class="install-instructions ios-install-guide" hidden aria-label="Eetdagboek op je iPhone zetten">
+            <h2>Op je iPhone zetten</h2>
+            <ol>
+                <li>Open deze website in Safari.</li>
+                <li>Tik op <strong>Deel</strong> (het vierkantje met de pijl omhoog).</li>
+                <li>Scrol in het menu en tik op <strong>Zet op beginscherm</strong>.</li>
+                <li>Tik op <strong>Voeg toe</strong>. Open het dagboek daarna via het nieuwe beginschermicoon.</li>
+            </ol>
+        </section>
         <section class="dev-access" id="dev-access">
-            <h2>Inloggen</h2>
-            <p>De beheerder gebruikt diens beheercode en kan gebruikerscodes aanmaken.</p>
             <form class="auth-form" id="auth-form">
                 <label for="auth-password">Gebruikerscode</label>
                 <input id="auth-password" type="password" autocomplete="current-password" required>
                 <button class="button button-primary" type="submit">Inloggen</button>
             </form>
+            <div class="login-loading" id="login-loading" hidden>
+                <div class="login-progress-track" role="progressbar" aria-label="Dagboek laden" aria-valuetext="Bezig met laden">
+                    <span></span>
+                </div>
+                <span class="sr-only">Dagboek wordt geladen</span>
+            </div>
             <p class="notification-status" id="auth-status" role="status"></p>
         </section>
     </main>
@@ -37,6 +50,7 @@
                 <img src="icon-192.png" class="brand-icon" aria-hidden="true">
                 <span>mijn eetdagboek</span>
             </a>
+            <span class="test-mode-banner" id="test-mode-banner" role="status" hidden>TESTMODUS · niets wordt opgeslagen</span>
             <span class="save-status" id="save-status" role="status">Wordt opgeslagen</span>
         </header>
 
@@ -44,14 +58,23 @@
             <button class="page-tab" id="diary-tab" type="button" role="tab"
                 aria-controls="diary-page" aria-selected="true" tabindex="0">Dagboek</button>
             <button class="page-tab" id="reminders-tab" type="button" role="tab"
-                aria-controls="reminders-page" aria-selected="false" tabindex="-1">Account en reservekopie</button>
+                aria-controls="reminders-page" aria-selected="false" tabindex="-1">Profiel en informatie</button>
         </nav>
 
         <div class="tab-panel" id="diary-page" role="tabpanel" aria-labelledby="diary-tab" tabindex="0">
         <section class="intro">
             <p class="eyebrow">JOUW DAGELIJKSE OVERZICHT</p>
-            <h1>Goed voor jezelf zorgen,<br><span>begint met bijhouden.</span></h1>
-            <p class="intro-copy">Noteer wat je eet en drinkt. Je gegevens worden automatisch in je eigen cloudopslag bewaard.</p>
+            <h1><span id="greeting">Goedemorgen</span>, <span id="greeting-name"></span>!<br></h1>
+            <p class="intro-copy">Noteer wat je eet en drinkt. Je gegevens worden automatisch opgeslagen.</p>
+            <section class="install-instructions ios-install-guide" hidden aria-label="Eetdagboek op je iPhone zetten">
+                <h2>Op je iPhone zetten</h2>
+                <ol>
+                    <li>Open deze website in Safari.</li>
+                    <li>Tik op <strong>Deel</strong> (het vierkantje met de pijl omhoog).</li>
+                    <li>Scrol in het menu en tik op <strong>Zet op beginscherm</strong>.</li>
+                    <li>Tik op <strong>Voeg toe</strong>. Open het dagboek daarna via het nieuwe beginschermicoon.</li>
+                </ol>
+            </section>
         </section>
 
         <section class="date-panel" aria-label="Kies een dag">
@@ -155,6 +178,19 @@
                         <button class="button button-secondary" id="logout-button" type="button" hidden>Uitloggen</button>
                     </div>
                 </div>
+                <section class="change-log-section" aria-labelledby="change-log-heading">
+                    <h2 id="change-log-heading">Veranderingen</h2>
+                    <p id="change-log-status" role="status">Veranderingen laden…</p>
+                    <ul class="change-log-list" id="change-log-list"></ul>
+                    <form class="change-log-form" id="change-log-form" hidden>
+                        <h3>Verandering toevoegen</h3>
+                        <label for="change-title">Titel</label>
+                        <input id="change-title" name="title" type="text" maxlength="120" required>
+                        <label for="change-message">Wat is er veranderd?</label>
+                        <textarea id="change-message" name="message" rows="4" maxlength="4000" required></textarea>
+                        <button class="button button-primary" type="submit">Verandering publiceren</button>
+                    </form>
+                </section>
                 <section class="admin-panel" id="admin-panel" hidden aria-labelledby="admin-heading">
                     <h2 id="admin-heading">Gebruikers beheren</h2>
                     <p>Een gebruikerscode wordt alleen direct na aanmaken getoond. Bewaar en deel de code veilig.</p>
@@ -187,6 +223,13 @@
 
         <footer id="storage-status">Ingelogd als <span id="account-name"></span>. Je sessie blijft op dit apparaat bewaard.</footer>
     </main>
+    <dialog class="changes-dialog" id="new-changes-dialog" aria-labelledby="new-changes-heading">
+        <h2 id="new-changes-heading">Nieuw in het eetdagboek</h2>
+        <p>Dit is er veranderd sinds je vorige bezoek:</p>
+        <ul class="change-log-list" id="new-changes-list"></ul>
+        <p class="notification-status" id="new-changes-status" role="status"></p>
+        <button class="button button-primary" id="acknowledge-changes-button" type="button">Begrepen</button>
+    </dialog>
     <script src="script.js"></script>
 </body>
 </html>

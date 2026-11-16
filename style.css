@@ -112,6 +112,40 @@ textarea {
     justify-self: start;
 }
 
+.login-loading {
+    width: min(100%, 420px);
+    margin: 22px auto 0;
+}
+
+.login-progress-track {
+    height: 8px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #e6ece7;
+}
+
+.login-progress-track span {
+    display: block;
+    width: 38%;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #6d9d7c, var(--green));
+    animation: login-progress 1.25s ease-in-out infinite;
+}
+
+@keyframes login-progress {
+    from { transform: translateX(-110%); }
+    to { transform: translateX(275%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .login-progress-track span {
+        width: 100%;
+        animation: none;
+        opacity: 0.65;
+    }
+}
+
 .install-intro {
     max-width: 540px;
     margin-bottom: 22px;
@@ -201,6 +235,16 @@ textarea {
     font-size: 12px;
 }
 
+.test-mode-banner {
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #fff0d6;
+    color: #805a15;
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+}
+
 .save-status::before {
     display: inline-block;
     width: 7px;
@@ -209,6 +253,10 @@ textarea {
     border-radius: 50%;
     background: #64a47b;
     content: "";
+}
+
+.test-mode .save-status::before {
+    background: #d09a31;
 }
 
 .intro {
@@ -646,6 +694,114 @@ h1 span {
     gap: 8px;
 }
 
+.change-log-section {
+    margin-top: 24px;
+    border-top: 1px solid var(--line);
+    padding-top: 20px;
+}
+
+.change-log-section > h2 {
+    margin-bottom: 12px;
+}
+
+.change-log-list {
+    display: grid;
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.change-log-list li {
+    border-left: 3px solid var(--green);
+    padding: 4px 0 4px 12px;
+}
+
+.change-log-list h3 {
+    margin: 0 0 4px;
+    font-size: 15px;
+}
+
+.change-log-list time {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.change-log-list p {
+    margin: 6px 0 0;
+    color: var(--ink);
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+}
+
+.change-log-form {
+    display: grid;
+    max-width: 520px;
+    gap: 9px;
+    margin-top: 20px;
+}
+
+.change-log-form[hidden] {
+    display: none;
+}
+
+.change-log-form h3 {
+    margin: 0 0 2px;
+}
+
+.change-log-form label {
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.change-log-form input,
+.change-log-form textarea {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: white;
+    color: var(--ink);
+}
+
+.change-log-form textarea {
+    min-height: 95px;
+    resize: vertical;
+}
+
+.change-log-form .button {
+    justify-self: start;
+}
+
+.changes-dialog {
+    width: min(100% - 32px, 520px);
+    max-height: min(80vh, 680px);
+    overflow: auto;
+    margin: auto;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 24px;
+    color: var(--ink);
+    box-shadow: 0 18px 60px #10201833;
+}
+
+.changes-dialog::backdrop {
+    background: #10201888;
+}
+
+.changes-dialog h2 {
+    margin: 0 0 8px;
+}
+
+.changes-dialog > p {
+    color: var(--muted);
+}
+
+.changes-dialog .button {
+    margin-top: 18px;
+}
+
 .admin-panel {
     margin-top: 24px;
     border-top: 1px solid var(--line);
@@ -700,6 +856,10 @@ h1 span {
     margin: 15px 0 10px;
     color: var(--green);
     font-size: 11px;
+}
+
+#auth-status:empty {
+    display: none;
 }
 
 .notification-reminders {
@@ -948,7 +1108,15 @@ footer {
     }
 
     .topbar {
-        height: 64px;
+        height: auto;
+        min-height: 64px;
+        flex-wrap: wrap;
+        padding: 8px 0;
+    }
+
+    .test-mode-banner:not([hidden]) {
+        order: 3;
+        flex-basis: 100%;
     }
 
     .intro {
