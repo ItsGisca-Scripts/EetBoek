@@ -1,4 +1,12 @@
-const { codeHash, createSession, database, readBody, respondError, send } = require('../../lib/backend');
+const {
+    codeHash,
+    createSession,
+    database,
+    readBody,
+    respondError,
+    sameSecret,
+    send
+} = require('../../lib/backend');
 
 module.exports = async function handler(req, res) {
     if (req.method !== 'POST') {
@@ -13,13 +21,8 @@ module.exports = async function handler(req, res) {
 
         const adminCode = process.env.ADMIN_CODE;
         if (!adminCode) throw new Error('De beheercode is nog niet ingesteld in Vercel.');
-        if (code.length === adminCode.length) {
-            const { createHash, timingSafeEqual } = require('node:crypto');
-            const provided = createHash('sha256').update(code).digest();
-            const configured = createHash('sha256').update(adminCode).digest();
-            if (timingSafeEqual(provided, configured)) {
-                return send(res, 200, { token: createSession('admin'), role: 'admin', name: 'Beheerder' });
-            }
+        if (sameSecret(code, adminCode)) {
+            return send(res, 200, { token: createSession('admin'), role: 'admin', name: 'Beheerder' });
         }
 
         const users = await database(

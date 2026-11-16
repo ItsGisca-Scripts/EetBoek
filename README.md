@@ -38,7 +38,7 @@ npx vercel --prod
 
 ## Gebruikers en gegevens
 
-Log in met `ADMIN_CODE` om gebruikers te beheren. Maak per gebruiker een code aan en deel die veilig; de volledige code wordt na aanmaak maar één keer getoond. De gebruiker logt in met alleen die code. De sessie blijft maximaal tien jaar op het apparaat bewaard, totdat de gebruiker uitlogt of de beheerder de toegang intrekt. Gebruikers zien alleen hun eigen dagboek.
+Log in met `ADMIN_CODE` om gebruikers te beheren. Maak per gebruiker een code aan en deel die veilig; de volledige code wordt na aanmaak maar één keer getoond. De gebruiker logt in met alleen die code. De sessie blijft op het apparaat bewaard totdat de gebruiker uitlogt of de beheerder de toegang intrekt. Wijzig `ADMIN_CODE` om bestaande beheerderssessies ongeldig te maken. Gebruikers zien alleen hun eigen dagboek.
 
 Wijzigingen worden na een korte typ-pauze automatisch naar Supabase verzonden. Een foutmelding verschijnt als opslaan niet lukt. Voor een ander apparaat log je in met dezelfde gebruikerscode. Maak daarnaast regelmatig een reservekopie via **Account en reservekopie**.
 

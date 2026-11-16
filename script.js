@@ -188,9 +188,6 @@ async function importDayFile(event) {
         )) {
             return;
         }
-        entries.forEach(([date, day]) => {
-            days[date] = normalizeDay(day);
-        });
         await writeCloudDays(entries.map(([date, data]) => ({ date, data })));
         const selectedDate = dateMatch && entries.some(([date]) => date === dateMatch[0])
             ? dateMatch[0]
@@ -638,7 +635,8 @@ authForm.addEventListener('submit', async event => {
 });
 
 logoutButton.addEventListener('click', async () => {
-    if (!await saveCurrentDay()) return;
+    if (!await saveCurrentDay() &&
+        !window.confirm('Je laatste wijzigingen zijn niet opgeslagen. Wil je toch uitloggen?')) return;
     localStorage.removeItem(sessionStorageKey);
     sessionToken = '';
     sessionRole = '';
@@ -647,6 +645,8 @@ logoutButton.addEventListener('click', async () => {
     installScreen.hidden = false;
     logoutButton.hidden = true;
     adminPanel.hidden = true;
+    document.getElementById('diary-tab').hidden = false;
+    activatePageTab(document.getElementById('diary-tab'));
     authStatus.textContent = 'Je bent uitgelogd.';
 });
 
@@ -663,6 +663,7 @@ async function startApp() {
         saveStatus.textContent = 'Dagboek laden mislukt';
         saveStatus.title = `De gegevens konden niet uit Supabase worden gelezen: ${error.message}`;
         console.error('Eetdagboek kon niet uit Supabase worden geladen.', error);
+        throw error;
     }
 }
 
@@ -705,7 +706,15 @@ async function showDiaryApp(name) {
         return;
     }
     document.getElementById('diary-tab').hidden = false;
-    await startApp();
+    activatePageTab(document.getElementById('diary-tab'));
+    try {
+        await startApp();
+    } catch (error) {
+        appStarted = false;
+        diaryApp.hidden = true;
+        installScreen.hidden = false;
+        authStatus.textContent = `Het dagboek kon niet worden geladen. Je wijzigingen zijn nog niet geopend: ${error.message}`;
+    }
 }
 
 if ('serviceWorker' in navigator && window.isSecureContext) {

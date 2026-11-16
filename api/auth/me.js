@@ -1,4 +1,4 @@
-const { readBody, respondError, send, verify } = require('../../lib/backend');
+const { respondError, send, verify } = require('../../lib/backend');
 
 module.exports = async function handler(req, res) {
     if (req.method !== 'GET') {
