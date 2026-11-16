@@ -11,7 +11,6 @@ create table if not exists public.diary_entries (
     user_id uuid not null references public.diary_users(id) on delete cascade,
     entry_date date not null,
     data jsonb not null,
-    updated_at timestamptz not null default now(),
     primary key (user_id, entry_date)
 );
 

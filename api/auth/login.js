@@ -20,7 +20,9 @@ module.exports = async function handler(req, res) {
         }
 
         const adminCode = process.env.ADMIN_CODE;
-        if (!adminCode) throw new Error('De beheercode is nog niet ingesteld in Vercel.');
+        if (!adminCode || adminCode.length < 32) {
+            throw new Error('De beheercode ontbreekt of is te kort. Stel een code van minimaal 32 tekens in Vercel in.');
+        }
         if (sameSecret(code, adminCode)) {
             return send(res, 200, { token: createSession('admin'), role: 'admin', name: 'Beheerder' });
         }

@@ -120,23 +120,23 @@ async function apiRequest(path, options = {}) {
     return result;
 }
 
-function readCloudDays() {
-    return savedDays;
-}
-
 async function writeCloudDays(entries) {
+    const normalizedEntries = entries.map(entry => ({
+        date: entry.date,
+        data: normalizeDay(entry.data)
+    }));
     await apiRequest('/api/days', {
         method: 'POST',
-        body: JSON.stringify({ entries })
+        body: JSON.stringify({ entries: normalizedEntries })
     });
-    entries.forEach(entry => {
-        savedDays[entry.date] = normalizeDay(entry.data);
+    normalizedEntries.forEach(entry => {
+        savedDays[entry.date] = entry.data;
     });
 }
 
 function downloadBackup() {
     try {
-        const days = { ...readCloudDays() };
+        const days = { ...savedDays };
         if (!Object.keys(days).length) {
             backupStatus.textContent = 'Er zijn nog geen opgeslagen dagen om te downloaden.';
             return;
@@ -166,7 +166,7 @@ async function importDayFile(event) {
             throw new Error('Dit bestand bevat geen dagboekgegevens.');
         }
         if (!await saveCurrentDay()) return;
-        const days = readCloudDays();
+        const days = savedDays;
         let entries;
         if (importedData.meals && typeof importedData.meals === 'object') {
             const date = dateMatch ? dateMatch[0] : dateInput.value;
@@ -415,7 +415,7 @@ function formatDate(dateString) {
 }
 
 function refreshHistory() {
-    const dates = Object.keys(readCloudDays())
+    const dates = Object.keys(savedDays)
         .filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date))
         .sort()
         .reverse();
@@ -437,7 +437,7 @@ async function loadDay(date) {
             dateInput.value = activeDate;
             return;
         }
-        const days = readCloudDays();
+        const days = savedDays;
         const savedDay = Object.prototype.hasOwnProperty.call(days, date) ? days[date] : null;
         activeDay = normalizeDay(savedDay);
         activeDate = date;
@@ -457,7 +457,7 @@ async function createDay() {
     if (!isValidDate(date)) return;
     try {
         if (!await saveCurrentDay()) return;
-        const days = readCloudDays();
+        const days = savedDays;
         if (Object.prototype.hasOwnProperty.call(days, date)) {
             saveStatus.textContent = 'Deze dag bestaat al';
             await loadDay(date);
@@ -565,7 +565,7 @@ async function openDocument() {
 
 const pageQuery = new URLSearchParams(location.search);
 const requestedDate = pageQuery.get('date');
-dateInput.value = requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)
+dateInput.value = isValidDate(requestedDate)
     ? requestedDate
     : localDateString(new Date());
 
@@ -594,17 +594,19 @@ document.getElementById('close-copy-button').addEventListener('click', () => {
 document.getElementById('open-document-button').addEventListener('click', openDocument);
 document.getElementById('backup-button').addEventListener('click', downloadBackup);
 document.getElementById('import-day-file').addEventListener('change', importDayFile);
-pageTabs.forEach((tab, index) => {
+pageTabs.forEach(tab => {
     tab.addEventListener('click', () => activatePageTab(tab));
     tab.addEventListener('keydown', event => {
-        let nextIndex = null;
-        if (event.key === 'ArrowRight') nextIndex = (index + 1) % pageTabs.length;
-        else if (event.key === 'ArrowLeft') nextIndex = (index + pageTabs.length - 1) % pageTabs.length;
+        const availableTabs = pageTabs.filter(item => !item.hidden);
+        const index = availableTabs.indexOf(tab);
+        let nextIndex = -1;
+        if (event.key === 'ArrowRight') nextIndex = (index + 1) % availableTabs.length;
+        else if (event.key === 'ArrowLeft') nextIndex = (index + availableTabs.length - 1) % availableTabs.length;
         else if (event.key === 'Home') nextIndex = 0;
-        else if (event.key === 'End') nextIndex = pageTabs.length - 1;
-        if (nextIndex === null) return;
+        else if (event.key === 'End') nextIndex = availableTabs.length - 1;
+        if (nextIndex < 0) return;
         event.preventDefault();
-        const nextTab = pageTabs[nextIndex];
+        const nextTab = availableTabs[nextIndex];
         activatePageTab(nextTab);
         nextTab.focus();
     });
@@ -645,6 +647,14 @@ logoutButton.addEventListener('click', async () => {
     installScreen.hidden = false;
     logoutButton.hidden = true;
     adminPanel.hidden = true;
+    generatedCodePanel.hidden = true;
+    generatedUserCode.textContent = '';
+    adminUserList.replaceChildren();
+    savedDays = {};
+    activeDate = '';
+    activeDay = blankDay();
+    render();
+    refreshHistory();
     document.getElementById('diary-tab').hidden = false;
     activatePageTab(document.getElementById('diary-tab'));
     authStatus.textContent = 'Je bent uitgelogd.';
@@ -688,14 +698,14 @@ async function loadAdminUsers() {
 }
 
 async function showDiaryApp(name) {
-    installScreen.hidden = true;
-    diaryApp.hidden = false;
     logoutButton.hidden = false;
     adminPanel.hidden = sessionRole !== 'admin';
     document.getElementById('account-name').textContent = name || '';
     if (appStarted) return;
     appStarted = true;
     if (sessionRole === 'admin') {
+        installScreen.hidden = true;
+        diaryApp.hidden = false;
         document.getElementById('diary-tab').hidden = true;
         activatePageTab(document.getElementById('reminders-tab'));
         try {
@@ -707,11 +717,16 @@ async function showDiaryApp(name) {
     }
     document.getElementById('diary-tab').hidden = false;
     activatePageTab(document.getElementById('diary-tab'));
+    diaryApp.hidden = true;
+    installScreen.hidden = false;
+    authStatus.textContent = 'Je dagboek wordt geladen…';
     try {
         await startApp();
+        authStatus.textContent = '';
+        installScreen.hidden = true;
+        diaryApp.hidden = false;
     } catch (error) {
         appStarted = false;
-        diaryApp.hidden = true;
         installScreen.hidden = false;
         authStatus.textContent = `Het dagboek kon niet worden geladen. Je wijzigingen zijn nog niet geopend: ${error.message}`;
     }
