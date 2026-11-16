@@ -10,18 +10,20 @@ module.exports = async function handler(req, res) {
     try {
         const session = await verify(req, 'user');
         const body = readBody(req);
-        if (!isRecord(body) || !Array.isArray(body.changeIds) ||
-            body.changeIds.length < 1 || body.changeIds.length > 500 ||
-            body.changeIds.some(id => typeof id !== 'string' || !uuidPattern.test(id))) {
+        if (!isRecord(body) || !Array.isArray(body.changes) ||
+            body.changes.length < 1 || body.changes.length > 500 ||
+            body.changes.some(change => !isRecord(change) ||
+                typeof change.id !== 'string' || !uuidPattern.test(change.id) ||
+                !Number.isInteger(change.revision) || change.revision < 1)) {
             return send(res, 400, { error: 'De lijst met gelezen wijzigingen is ongeldig.' });
         }
-        const rows = Array.from(new Set(body.changeIds)).map(changeId => ({
-            user_id: session.sub,
-            change_id: changeId
-        }));
+        const rows = Array.from(new Map(body.changes.map(change => [
+            change.id,
+            { user_id: session.sub, change_id: change.id, seen_revision: change.revision }
+        ])).values());
         await database('diary_change_reads', 'on_conflict=user_id,change_id', {
             method: 'POST',
-            prefer: 'resolution=ignore-duplicates,return=minimal',
+            prefer: 'resolution=merge-duplicates,return=minimal',
             body: rows
         });
         return send(res, 200, { markedRead: rows.length });

@@ -735,7 +735,8 @@ h1 span {
     white-space: pre-wrap;
 }
 
-.change-log-form {
+.change-log-form,
+.change-log-edit-form {
     display: grid;
     max-width: 520px;
     gap: 9px;
@@ -750,13 +751,16 @@ h1 span {
     margin: 0 0 2px;
 }
 
-.change-log-form label {
+.change-log-form label,
+.change-log-edit-form label {
     font-size: 12px;
     font-weight: 700;
 }
 
 .change-log-form input,
-.change-log-form textarea {
+.change-log-form textarea,
+.change-log-edit-form input,
+.change-log-edit-form textarea {
     width: 100%;
     border: 1px solid var(--line);
     border-radius: 8px;
@@ -765,13 +769,30 @@ h1 span {
     color: var(--ink);
 }
 
-.change-log-form textarea {
+.change-log-form textarea,
+.change-log-edit-form textarea {
     min-height: 95px;
     resize: vertical;
 }
 
 .change-log-form .button {
     justify-self: start;
+}
+
+.change-log-edit-form {
+    max-width: none;
+    margin-top: 12px;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #f7faf7;
+}
+
+.change-log-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
 }
 
 .changes-dialog {

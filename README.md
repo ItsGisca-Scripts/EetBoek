@@ -14,7 +14,7 @@ De app gebruikt Vercel voor de website en API en Supabase voor de dagboekopslag.
    - `ADMIN_CODE`: een andere, willekeurige geheime waarde. Dit is de beheerderscode waarmee je inlogt.
 5. Maak de eerste deployment opnieuw nadat je de variabelen hebt ingesteld.
 
-Bij een bestaande installatie voer je het bijgewerkte `supabase/schema.sql` ook opnieuw uit om de changelogtabellen aan te maken.
+Bij een bestaande installatie voer je het bijgewerkte `supabase/schema.sql` ook opnieuw uit om de changelogtabellen en meldingsversies toe te voegen.
 
 Genereer twee verschillende sterke waarden in CMD met:
 
@@ -40,14 +40,12 @@ npx vercel --prod
 
 ## Lokaal testen in VS Code
 
-Start **Live Server** op `localhost` of `127.0.0.1`. Het inlogscherm blijft beschikbaar; vul daar een willekeurige code in om de app lokaal te openen. De API, browseropslag en service worker worden niet gebruikt. Ingevoerde gegevens blijven alleen in het geheugen en verdwijnen zodra je teruggaat naar het inlogscherm, de pagina vernieuwt of sluit. Reservekopie/import en dagoverzicht-export zijn in deze modus uitgeschakeld.
+Start **Live Server** op `localhost` of `127.0.0.1`. Het inlogscherm blijft beschikbaar; vul daar een willekeurige code in om de app lokaal te openen. De API, browseropslag en service worker worden niet gebruikt. Ingevoerde gegevens blijven alleen in het geheugen en verdwijnen zodra je teruggaat naar het inlogscherm, de pagina vernieuwt of sluit. Het dagoverzicht exporteren is in deze modus uitgeschakeld.
 
 ## Gebruikers en gegevens
 
 Log in met `ADMIN_CODE` om gebruikers te beheren. Maak per gebruiker een code aan en deel die veilig; de volledige code wordt na aanmaak maar één keer getoond. De gebruiker logt in met alleen die code. De sessie blijft op het apparaat bewaard totdat de gebruiker uitlogt of de beheerder de toegang intrekt. Wijzig `ADMIN_CODE` om bestaande beheerderssessies ongeldig te maken. Gebruikers zien alleen hun eigen dagboek.
 
-Wijzigingen worden na een korte typ-pauze automatisch naar Supabase verzonden. Een foutmelding verschijnt als opslaan niet lukt. Voor een ander apparaat log je in met dezelfde gebruikerscode. Maak daarnaast regelmatig een reservekopie via **Profiel en informatie**.
+Wijzigingen worden na een korte typ-pauze automatisch naar Supabase verzonden. Een foutmelding verschijnt als opslaan niet lukt. Voor een ander apparaat log je in met dezelfde gebruikerscode. Import en export van JSON-bestanden is verwijderd; het dagoverzicht voor je diëtist en opslaan daarvan als afbeelding zijn nog beschikbaar. Oude browseropslag wordt niet automatisch overgezet.
 
-Beheerders kunnen in **Profiel en informatie → Veranderingen** een update publiceren. Gebruikers krijgen de nieuwe updates eenmalig na het inloggen en kunnen ze daar later teruglezen.
-
-De bestaande browseropslag wordt niet automatisch naar Supabase gekopieerd. Download eerst een reservekopie uit de oude app en importeer die na het inloggen. Behandel gebruikerscodes en reservekopieën als privégegevens.
+Beheerders kunnen in **Profiel en informatie → Veranderingen** updates publiceren, aanpassen en verwijderen. Een aangepaste update verschijnt opnieuw als melding bij gebruikers die de eerdere versie al hebben gezien. Gebruikers kunnen updates daar later teruglezen.

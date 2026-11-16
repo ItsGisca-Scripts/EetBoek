@@ -29,7 +29,6 @@ const mealList = document.getElementById('meal-list');
 const notesInput = document.getElementById('day-notes');
 const stoolTypesElement = document.getElementById('stool-types');
 const saveStatus = document.getElementById('save-status');
-const backupStatus = document.getElementById('backup-status');
 const installScreen = document.getElementById('install-screen');
 const diaryApp = document.getElementById('diary-app');
 const authForm = document.getElementById('auth-form');
@@ -66,7 +65,8 @@ let saveQueue = Promise.resolve();
 let saveRevision = 0;
 let saveError = null;
 let changeLog = [];
-let unreadChangeIds = [];
+let unreadChanges = [];
+let editingChangeId = '';
 
 function setLoginLoading(loading) {
     loginLoading.hidden = !loading;
@@ -144,97 +144,6 @@ async function apiRequest(path, options = {}) {
     }
     if (!response.ok) throw new Error(result.error || 'Het verzoek is mislukt.');
     return result;
-}
-
-async function writeCloudDays(entries) {
-    const normalizedEntries = entries.map(entry => ({
-        date: entry.date,
-        data: normalizeDay(entry.data)
-    }));
-    if (isTestEnvironment) {
-        normalizedEntries.forEach(entry => {
-            savedDays[entry.date] = entry.data;
-        });
-        return;
-    }
-    await apiRequest('/api/days', {
-        method: 'POST',
-        body: JSON.stringify({ entries: normalizedEntries })
-    });
-    normalizedEntries.forEach(entry => {
-        savedDays[entry.date] = entry.data;
-    });
-}
-
-function downloadBackup() {
-    try {
-        const days = { ...savedDays };
-        if (!Object.keys(days).length) {
-            backupStatus.textContent = 'Er zijn nog geen opgeslagen dagen om te downloaden.';
-            return;
-        }
-        const backup = new Blob([JSON.stringify(days, null, 2)], { type: 'application/json' });
-        const backupUrl = URL.createObjectURL(backup);
-        const link = document.createElement('a');
-        link.href = backupUrl;
-        link.download = 'eetdagboek-reservekopie.json';
-        link.click();
-        window.setTimeout(() => URL.revokeObjectURL(backupUrl), 1000);
-        backupStatus.textContent = 'Reservekopie gedownload.';
-    } catch (error) {
-        backupStatus.textContent = `Reservekopie maken is mislukt: ${error.message}`;
-        console.error('Eetdagboekreservekopie kon niet worden gemaakt.', error);
-    }
-}
-
-async function importDayFile(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    const dateMatch = file.name.match(/\d{4}-\d{2}-\d{2}/);
-
-    try {
-        const importedData = JSON.parse(await file.text());
-        if (!importedData || typeof importedData !== 'object' || Array.isArray(importedData)) {
-            throw new Error('Dit bestand bevat geen dagboekgegevens.');
-        }
-        if (!await saveCurrentDay()) return;
-        const days = savedDays;
-        let entries;
-        if (importedData.meals && typeof importedData.meals === 'object') {
-            const date = dateMatch ? dateMatch[0] : dateInput.value;
-            if (!isValidDate(date)) throw new Error('De datum voor deze dag is ongeldig.');
-            entries = [[date, importedData]];
-        } else {
-            entries = Object.entries(importedData);
-            if (!entries.length || entries.some(([date, day]) =>
-                !isValidDate(date) || !day || typeof day !== 'object' ||
-                !day.meals || typeof day.meals !== 'object')) {
-                throw new Error('Dit bestand bevat geen geldige reservekopie.');
-            }
-        }
-
-        const conflicts = entries.filter(([date]) =>
-            Object.prototype.hasOwnProperty.call(days, date));
-        if (conflicts.length && !window.confirm(
-            `${conflicts.length} ${conflicts.length === 1 ? 'dag bestaat' : 'dagen bestaan'} al. Wil je die vervangen?`
-        )) {
-            return;
-        }
-        await writeCloudDays(entries.map(([date, data]) => ({ date, data })));
-        const selectedDate = dateMatch && entries.some(([date]) => date === dateMatch[0])
-            ? dateMatch[0]
-            : entries[0][0];
-        activeDate = '';
-        dateInput.value = selectedDate;
-        await loadDay(selectedDate);
-        refreshHistory();
-        backupStatus.textContent = `${entries.length} ${entries.length === 1 ? 'dag geïmporteerd' : 'dagen geïmporteerd'}.`;
-    } catch (error) {
-        backupStatus.textContent = `Dagbestand importeren is mislukt: ${error.message}`;
-        console.error('Dagbestand kon niet worden geïmporteerd.', error);
-    } finally {
-        event.target.value = '';
-    }
 }
 
 function normalizeDay(savedDay) {
@@ -649,8 +558,6 @@ document.getElementById('close-copy-button').addEventListener('click', () => {
     document.getElementById('copy-preview').hidden = true;
 });
 document.getElementById('open-document-button').addEventListener('click', openDocument);
-document.getElementById('backup-button').addEventListener('click', downloadBackup);
-document.getElementById('import-day-file').addEventListener('change', importDayFile);
 pageTabs.forEach(tab => {
     tab.addEventListener('click', () => activatePageTab(tab));
     tab.addEventListener('keydown', event => {
@@ -709,6 +616,7 @@ logoutButton.addEventListener('click', async () => {
     sessionToken = '';
     sessionRole = '';
     appStarted = false;
+    editingChangeId = '';
     diaryApp.hidden = true;
     installScreen.hidden = false;
     loginLoading.hidden = true;
@@ -787,6 +695,65 @@ function makeChangeListItem(change) {
     const message = document.createElement('p');
     message.textContent = change.message;
     item.append(title, date, message);
+    if (sessionRole === 'admin') {
+        const actions = document.createElement('div');
+        actions.className = 'change-log-actions';
+        const editButton = document.createElement('button');
+        editButton.className = 'button button-secondary';
+        editButton.type = 'button';
+        editButton.dataset.editChange = change.id;
+        editButton.textContent = 'Aanpassen';
+        const deleteButton = document.createElement('button');
+        deleteButton.className = 'button button-secondary';
+        deleteButton.type = 'button';
+        deleteButton.dataset.deleteChange = change.id;
+        deleteButton.textContent = 'Verwijderen';
+        actions.append(editButton, deleteButton);
+        item.appendChild(actions);
+
+        if (editingChangeId === change.id) {
+            const form = document.createElement('form');
+            form.className = 'change-log-edit-form';
+            form.dataset.changeEditor = change.id;
+            form.dataset.revision = change.revision;
+            const titleId = `change-edit-title-${change.id}`;
+            const messageId = `change-edit-message-${change.id}`;
+            const titleLabel = document.createElement('label');
+            titleLabel.htmlFor = titleId;
+            titleLabel.textContent = 'Titel';
+            const titleInput = document.createElement('input');
+            titleInput.id = titleId;
+            titleInput.name = 'title';
+            titleInput.type = 'text';
+            titleInput.maxLength = 120;
+            titleInput.required = true;
+            titleInput.value = change.title;
+            const messageLabel = document.createElement('label');
+            messageLabel.htmlFor = messageId;
+            messageLabel.textContent = 'Wat is er veranderd?';
+            const messageInput = document.createElement('textarea');
+            messageInput.id = messageId;
+            messageInput.name = 'message';
+            messageInput.rows = 4;
+            messageInput.maxLength = 4000;
+            messageInput.required = true;
+            messageInput.value = change.message;
+            const formActions = document.createElement('div');
+            formActions.className = 'change-log-actions';
+            const saveButton = document.createElement('button');
+            saveButton.className = 'button button-primary';
+            saveButton.type = 'submit';
+            saveButton.textContent = 'Wijzigingen opslaan';
+            const cancelButton = document.createElement('button');
+            cancelButton.className = 'button button-secondary';
+            cancelButton.type = 'button';
+            cancelButton.dataset.cancelChange = change.id;
+            cancelButton.textContent = 'Annuleren';
+            formActions.append(saveButton, cancelButton);
+            form.append(titleLabel, titleInput, messageLabel, messageInput, formActions);
+            item.appendChild(form);
+        }
+    }
     return item;
 }
 
@@ -807,7 +774,7 @@ async function loadChangeLog() {
 }
 
 function showNewChanges(changes) {
-    unreadChangeIds = changes.map(change => change.id);
+    unreadChanges = changes.map(change => ({ id: change.id, revision: change.revision }));
     newChangesList.replaceChildren(...changes.map(makeChangeListItem));
     newChangesStatus.textContent = '';
     newChangesDialog.showModal();
@@ -820,13 +787,13 @@ async function acknowledgeNewChanges() {
     try {
         await apiRequest('/api/changes/read', {
             method: 'POST',
-            body: JSON.stringify({ changeIds: unreadChangeIds })
+            body: JSON.stringify({ changes: unreadChanges })
         });
-        const acknowledgedIds = new Set(unreadChangeIds);
-        changeLog = changeLog.map(change => acknowledgedIds.has(change.id)
+        const acknowledgedRevisions = new Map(unreadChanges.map(change => [change.id, change.revision]));
+        changeLog = changeLog.map(change => acknowledgedRevisions.get(change.id) === change.revision
             ? { ...change, seen: true }
             : change);
-        unreadChangeIds = [];
+        unreadChanges = [];
         renderChangeLog();
         newChangesDialog.close();
     } catch (error) {
@@ -863,8 +830,6 @@ async function showDiaryApp(name) {
             'Lokale testomgeving: gegevens blijven alleen tijdelijk in het geheugen en worden nergens opgeslagen.';
         document.getElementById('storage-status').textContent =
             'Testmodus — vernieuwen of sluiten wist alle ingevoerde gegevens.';
-        document.getElementById('backup-button').hidden = true;
-        document.querySelector('label[for="import-day-file"]').hidden = true;
         document.getElementById('open-document-button').hidden = true;
         logoutButton.hidden = false;
         logoutButton.textContent = 'Terug naar inlogscherm';
@@ -975,6 +940,84 @@ changeLogForm.addEventListener('submit', async event => {
         console.error('De changelog kon niet worden bijgewerkt.', error);
     } finally {
         button.disabled = false;
+    }
+});
+
+changeLogList.addEventListener('click', async event => {
+    const cancelButton = event.target.closest('[data-cancel-change]');
+    if (cancelButton) {
+        editingChangeId = '';
+        renderChangeLog();
+        return;
+    }
+    const editButton = event.target.closest('[data-edit-change]');
+    if (editButton) {
+        editingChangeId = editButton.dataset.editChange;
+        renderChangeLog();
+        changeLogList.querySelector('[data-change-editor] input[name="title"]').focus();
+        return;
+    }
+    const deleteButton = event.target.closest('[data-delete-change]');
+    if (!deleteButton || !window.confirm('Wil je deze update definitief verwijderen?')) return;
+    deleteButton.disabled = true;
+    changeLogStatus.textContent = 'Update wordt verwijderd…';
+    try {
+        await apiRequest(`/api/changes?id=${encodeURIComponent(deleteButton.dataset.deleteChange)}`, {
+            method: 'DELETE'
+        });
+    } catch (error) {
+        changeLogStatus.textContent = `Update verwijderen mislukt: ${error.message}`;
+        console.error('De changelog-update kon niet worden verwijderd.', error);
+        deleteButton.disabled = false;
+        return;
+    }
+    editingChangeId = '';
+    try {
+        await loadChangeLog();
+        changeLogStatus.textContent = 'Update verwijderd.';
+    } catch (error) {
+        changeLogStatus.textContent = `Update verwijderd, maar de lijst kon niet worden vernieuwd: ${error.message}`;
+        console.error('De changelog kon na verwijderen niet worden ververst.', error);
+    }
+});
+
+changeLogList.addEventListener('submit', async event => {
+    const form = event.target.closest('[data-change-editor]');
+    if (!form) return;
+    event.preventDefault();
+    const button = form.querySelector('button[type="submit"]');
+    button.disabled = true;
+    changeLogStatus.textContent = 'Wijziging wordt opgeslagen…';
+    try {
+        await apiRequest(`/api/changes?id=${encodeURIComponent(form.dataset.changeEditor)}`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+                title: form.elements.namedItem('title').value,
+                message: form.elements.namedItem('message').value,
+                revision: Number(form.dataset.revision)
+            })
+        });
+    } catch (error) {
+        if (error.message.includes('ondertussen aangepast')) {
+            editingChangeId = '';
+            try {
+                await loadChangeLog();
+            } catch (reloadError) {
+                console.error('De changelog kon na een conflicterende wijziging niet worden ververst.', reloadError);
+            }
+        }
+        changeLogStatus.textContent = `Update aanpassen mislukt: ${error.message}`;
+        console.error('De changelog-update kon niet worden aangepast.', error);
+        button.disabled = false;
+        return;
+    }
+    editingChangeId = '';
+    try {
+        await loadChangeLog();
+        changeLogStatus.textContent = 'Update aangepast. Gebruikers krijgen bij hun volgende login opnieuw een melding.';
+    } catch (error) {
+        changeLogStatus.textContent = `Update aangepast, maar de lijst kon niet worden vernieuwd: ${error.message}`;
+        console.error('De changelog kon na aanpassen niet worden ververst.', error);
     }
 });
 
