@@ -291,13 +291,14 @@ async function loadDocument() {
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         throw new Error('De datum in de documentlink is ongeldig.');
     }
-    let day;
-    const saved = localStorage.getItem('mijn-eetdagboek-v1');
-    const days = saved ? JSON.parse(saved) : {};
-    if (!days || typeof days !== 'object' || Array.isArray(days)) {
-        throw new Error('De lokaal opgeslagen dagen hebben een ongeldig formaat.');
-    }
-    day = days[date] || { meals: {}, notes: '', stoolType: null };
+    const token = localStorage.getItem('eetdagboek-session-v1');
+    if (!token) throw new Error('Je bent uitgelogd. Log opnieuw in om dit overzicht te openen.');
+    const response = await fetch(`/api/days?date=${encodeURIComponent(date)}`, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Het dagoverzicht kon niet worden geladen.');
+    const day = result.entries[0] ? result.entries[0].data : { meals: {}, notes: '', stoolType: null };
     renderDocument(date, day);
 }
 

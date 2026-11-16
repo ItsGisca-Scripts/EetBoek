@@ -17,25 +17,16 @@
     <main class="install-screen panel" id="install-screen">
         <img src="icon-192.png" class="install-logo" alt="">
         <p class="eyebrow">MIJN EETDAGBOEK</p>
-        <h1>Gebruik het dagboek als app</h1>
-        <p class="install-intro">Voeg deze site toe aan je beginscherm om hem als app te openen. In een gewone browser kun je het dagboek openen met de devmode-code.</p>
-        <section class="install-instructions" id="ios-install-instructions">
-            <h2>Op een iPhone of iPad</h2>
-            <ol>
-                <li>Open deze site in Safari.</li>
-                <li>Tik op <strong>Deel</strong> en kies <strong>Zet op beginscherm</strong>.</li>
-                <li>Open het dagboek via het nieuwe icoon.</li>
-            </ol>
-        </section>
+        <h1>Log in op je eetdagboek</h1>
+        <p class="install-intro">Gebruik de gebruikerscode die je van de beheerder hebt gekregen. Je blijft op dit apparaat ingelogd totdat je uitlogt of de beheerder je toegang intrekt.</p>
         <section class="dev-access" id="dev-access">
-            <h2>Devmode</h2>
-            <p>Vul de code in om het dagboek in deze browser te openen.</p>
+            <h2>Inloggen</h2>
+            <p>De beheerder gebruikt diens beheercode en kan gebruikerscodes aanmaken.</p>
             <form class="auth-form" id="auth-form">
-                <label for="auth-password">Devmode-code</label>
-                <input id="auth-password" type="password" autocomplete="off" required>
-                <button class="button button-primary" type="submit">Open devmode</button>
+                <label for="auth-password">Gebruikerscode</label>
+                <input id="auth-password" type="password" autocomplete="current-password" required>
+                <button class="button button-primary" type="submit">Inloggen</button>
             </form>
-            <p class="notification-status">Dit code-scherm is alleen een eenvoudige drempel. De code staat in de publieke websitecode en biedt geen echte beveiliging.</p>
             <p class="notification-status" id="auth-status" role="status"></p>
         </section>
     </main>
@@ -53,14 +44,14 @@
             <button class="page-tab" id="diary-tab" type="button" role="tab"
                 aria-controls="diary-page" aria-selected="true" tabindex="0">Dagboek</button>
             <button class="page-tab" id="reminders-tab" type="button" role="tab"
-                aria-controls="reminders-page" aria-selected="false" tabindex="-1">App gebruiken</button>
+                aria-controls="reminders-page" aria-selected="false" tabindex="-1">Account en reservekopie</button>
         </nav>
 
         <div class="tab-panel" id="diary-page" role="tabpanel" aria-labelledby="diary-tab" tabindex="0">
         <section class="intro">
             <p class="eyebrow">JOUW DAGELIJKSE OVERZICHT</p>
             <h1>Goed voor jezelf zorgen,<br><span>begint met bijhouden.</span></h1>
-            <p class="intro-copy">Noteer wat je eet en drinkt. Je gegevens worden automatisch per dag opgeslagen.</p>
+            <p class="intro-copy">Noteer wat je eet en drinkt. Je gegevens worden automatisch in je eigen cloudopslag bewaard.</p>
         </section>
 
         <section class="date-panel" aria-label="Kies een dag">
@@ -155,16 +146,32 @@
                     <div>
                         <p class="eyebrow">OP ELK MOMENT BESCHIKBAAR</p>
                         <h2 id="notification-heading">Gebruik als app</h2>
-                        <p class="notification-copy" id="notification-copy">Je dagboek wordt alleen in deze browser op dit apparaat opgeslagen. Een gedeelde link deelt de app, niet je gegevens.</p>
+                        <p class="notification-copy" id="notification-copy">Je dagboek wordt per gebruiker in Supabase opgeslagen. Alleen jouw gebruikerscode geeft toegang tot jouw dagen.</p>
                     </div>
                     <div class="notification-actions">
-                        <button class="button button-secondary" id="share-app-button" type="button">Deel app-link</button>
                         <button class="button button-secondary" id="backup-button" type="button">Download reservekopie</button>
                         <label class="button button-secondary" for="import-day-file">Dagbestand importeren</label>
                         <input id="import-day-file" type="file" accept=".json,application/json" hidden>
-                        <button class="button button-secondary" id="logout-button" type="button" hidden>Uitloggen uit devmode</button>
+                        <button class="button button-secondary" id="logout-button" type="button" hidden>Uitloggen</button>
                     </div>
                 </div>
+                <section class="admin-panel" id="admin-panel" hidden aria-labelledby="admin-heading">
+                    <h2 id="admin-heading">Gebruikers beheren</h2>
+                    <p>Een gebruikerscode wordt alleen direct na aanmaken getoond. Bewaar en deel de code veilig.</p>
+                    <form class="auth-form" id="create-user-form">
+                        <label for="new-user-name">Naam van de gebruiker</label>
+                        <input id="new-user-name" type="text" maxlength="80" required>
+                        <button class="button button-primary" type="submit">Gebruiker aanmaken</button>
+                    </form>
+                    <div class="generated-code-panel" id="generated-code-panel" hidden>
+                        <strong>Nieuwe gebruikerscode</strong>
+                        <code id="generated-user-code"></code>
+                        <button class="button button-secondary" id="copy-user-code-button" type="button">Code kopiëren</button>
+                    </div>
+                    <h3>Bestaande gebruikers</h3>
+                    <ul class="admin-user-list" id="admin-user-list"></ul>
+                    <p class="notification-status" id="admin-status" role="status"></p>
+                </section>
                 <p class="notification-status" id="app-link-status" role="status" hidden></p>
                 <p class="notification-status" id="backup-status" role="status"></p>
                 <details class="install-help" id="install-help">
@@ -174,12 +181,12 @@
                         <li>Tik op <strong>Deel</strong> en kies <strong>Zet op beginscherm</strong>.</li>
                         <li>Open de nieuwe eetdagboek-app vanaf je beginscherm.</li>
                     </ol>
-                    <p>Je kunt hierboven de link delen. De ontvanger moet de app op het eigen apparaat installeren. Dagboekgegevens worden niet met anderen gedeeld of gesynchroniseerd.</p>
+                    <p>Je dagboekgegevens worden online bewaard. Log op een ander apparaat in met dezelfde gebruikerscode om je dagen te openen.</p>
                 </details>
             </section>
         </div>
 
-        <footer id="storage-status">Je dagboek wordt alleen in deze browser op dit apparaat opgeslagen.</footer>
+        <footer id="storage-status">Ingelogd als <span id="account-name"></span>. Je sessie blijft op dit apparaat bewaard.</footer>
     </main>
     <script src="script.js"></script>
 </body>

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'eetdagboek-shell-v7';
+const CACHE_NAME = 'eetdagboek-shell-v8';
 const APP_FILES = [
     '',
     'index.html',
@@ -34,7 +34,8 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
     const requestUrl = new URL(event.request.url);
     if (event.request.method !== 'GET' ||
-        requestUrl.origin !== self.location.origin) return;
+        requestUrl.origin !== self.location.origin ||
+        requestUrl.pathname.startsWith('/api/')) return;
 
     event.respondWith(
         fetch(event.request).then(response => {

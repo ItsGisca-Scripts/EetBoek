@@ -17,14 +17,13 @@ const stoolTypes = [
     { type: 7, title: 'Waterig', detail: 'Geen vaste stukjes, helemaal vloeibaar' }
 ];
 
-const diaryStorageKey = 'mijn-eetdagboek-v1';
+const sessionStorageKey = 'eetdagboek-session-v1';
 const dateInput = document.getElementById('diary-date');
 const historySelect = document.getElementById('history-select');
 const mealList = document.getElementById('meal-list');
 const notesInput = document.getElementById('day-notes');
 const stoolTypesElement = document.getElementById('stool-types');
 const saveStatus = document.getElementById('save-status');
-const appLinkStatus = document.getElementById('app-link-status');
 const backupStatus = document.getElementById('backup-status');
 const installScreen = document.getElementById('install-screen');
 const diaryApp = document.getElementById('diary-app');
@@ -32,13 +31,24 @@ const authForm = document.getElementById('auth-form');
 const authPassword = document.getElementById('auth-password');
 const authStatus = document.getElementById('auth-status');
 const logoutButton = document.getElementById('logout-button');
+const adminPanel = document.getElementById('admin-panel');
+const adminUserList = document.getElementById('admin-user-list');
+const adminStatus = document.getElementById('admin-status');
+const generatedCodePanel = document.getElementById('generated-code-panel');
+const generatedUserCode = document.getElementById('generated-user-code');
 const pageTabs = Array.from(document.querySelectorAll('.page-tab'));
 const pagePanels = Array.from(document.querySelectorAll('.tab-panel'));
 let activeDay = blankDay();
 let activeDate = '';
 let appStarted = false;
-let isDevMode = false;
-const devModeCode = 'devmode';
+let savedDays = {};
+let sessionToken = '';
+let sessionRole = '';
+let pendingSaveTimer = null;
+let pendingSave = null;
+let saveQueue = Promise.resolve();
+let saveRevision = 0;
+let saveError = null;
 
 function localDateString(date) {
     const year = date.getFullYear();
@@ -75,36 +85,6 @@ function escapeHtml(value) {
     })[character]);
 }
 
-async function shareAppLink(statusElement = appLinkStatus) {
-    const appUrl = new URL(window.location.href);
-    appUrl.search = '';
-    appUrl.hash = '';
-    statusElement.hidden = false;
-    if (navigator.share) {
-        try {
-            await navigator.share({
-                title: 'Mijn eetdagboek',
-                text: 'Open mijn eetdagboek-app via deze link.',
-                url: appUrl.href
-            });
-            statusElement.textContent = 'App-link gedeeld.';
-        } catch (error) {
-            if (error.name === 'AbortError') return;
-            statusElement.textContent = `De link kon niet worden gedeeld: ${error.message}`;
-            console.error('De app-link kon niet worden gedeeld.', error);
-        }
-        return;
-    }
-
-    try {
-        await navigator.clipboard.writeText(appUrl.href);
-        statusElement.textContent = 'App-link gekopieerd. Je kunt hem nu versturen.';
-    } catch (error) {
-        statusElement.textContent = `Kopieer deze app-link om hem te versturen: ${appUrl.href}`;
-        console.error('De app-link kon niet naar het klembord worden gekopieerd.', error);
-    }
-}
-
 function blankDay() {
     const meals = {};
     moments.forEach(moment => {
@@ -122,23 +102,41 @@ function blankDay() {
     return { meals, notes: '', stoolType: null };
 }
 
-function readLocalDays() {
-    const saved = localStorage.getItem(diaryStorageKey);
-    if (!saved) return {};
-    const days = JSON.parse(saved);
-    if (!days || typeof days !== 'object' || Array.isArray(days)) {
-        throw new Error('De lokaal opgeslagen dagen hebben een ongeldig formaat.');
+async function apiRequest(path, options = {}) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (sessionToken) headers.Authorization = `Bearer ${sessionToken}`;
+    const response = await fetch(path, {
+        method: options.method || 'GET',
+        headers,
+        ...(options.body ? { body: options.body } : {})
+    });
+    let result;
+    try {
+        result = await response.json();
+    } catch {
+        throw new Error('De server gaf een ongeldig antwoord terug.');
     }
-    return days;
+    if (!response.ok) throw new Error(result.error || 'Het verzoek is mislukt.');
+    return result;
 }
 
-function writeLocalDays(days) {
-    localStorage.setItem(diaryStorageKey, JSON.stringify(days));
+function readCloudDays() {
+    return savedDays;
+}
+
+async function writeCloudDays(entries) {
+    await apiRequest('/api/days', {
+        method: 'POST',
+        body: JSON.stringify({ entries })
+    });
+    entries.forEach(entry => {
+        savedDays[entry.date] = normalizeDay(entry.data);
+    });
 }
 
 function downloadBackup() {
     try {
-        const days = readLocalDays();
+        const days = { ...readCloudDays() };
         if (!Object.keys(days).length) {
             backupStatus.textContent = 'Er zijn nog geen opgeslagen dagen om te downloaden.';
             return;
@@ -167,8 +165,8 @@ async function importDayFile(event) {
         if (!importedData || typeof importedData !== 'object' || Array.isArray(importedData)) {
             throw new Error('Dit bestand bevat geen dagboekgegevens.');
         }
-        if (!saveCurrentDay()) return;
-        const days = readLocalDays();
+        if (!await saveCurrentDay()) return;
+        const days = readCloudDays();
         let entries;
         if (importedData.meals && typeof importedData.meals === 'object') {
             const date = dateMatch ? dateMatch[0] : dateInput.value;
@@ -193,13 +191,13 @@ async function importDayFile(event) {
         entries.forEach(([date, day]) => {
             days[date] = normalizeDay(day);
         });
-        writeLocalDays(days);
+        await writeCloudDays(entries.map(([date, data]) => ({ date, data })));
         const selectedDate = dateMatch && entries.some(([date]) => date === dateMatch[0])
             ? dateMatch[0]
             : entries[0][0];
         activeDate = '';
         dateInput.value = selectedDate;
-        loadDay(selectedDate);
+        await loadDay(selectedDate);
         refreshHistory();
         backupStatus.textContent = `${entries.length} ${entries.length === 1 ? 'dag geïmporteerd' : 'dagen geïmporteerd'}.`;
     } catch (error) {
@@ -332,39 +330,71 @@ function collectDay() {
     return day;
 }
 
+function queueSave(date, day) {
+    const revision = ++saveRevision;
+    saveError = null;
+    saveQueue = saveQueue.then(async () => {
+        await apiRequest('/api/days', {
+            method: 'POST',
+            body: JSON.stringify({ entries: [{ date, data: day }] })
+        });
+        savedDays[date] = day;
+        if (revision === saveRevision && activeDate === date) {
+            saveStatus.textContent = 'Opgeslagen in de cloud';
+            saveStatus.title = '';
+            refreshHistory();
+        }
+    }).catch(error => {
+        if (revision === saveRevision) {
+            saveError = error;
+            saveStatus.textContent = 'Opslaan mislukt';
+            saveStatus.title = `Je wijzigingen konden niet in de cloud worden opgeslagen: ${error.message}`;
+        }
+        console.error('Eetdagboek kon niet in Supabase worden opgeslagen.', error);
+    });
+    return saveQueue.then(() => !saveError);
+}
+
 function scheduleSave() {
     activeDay = collectDay();
     updateSummary();
-    try {
-        const days = readLocalDays();
-        const date = activeDate || dateInput.value;
-        days[date] = activeDay;
-        writeLocalDays(days);
-        saveStatus.textContent = 'Opgeslagen op dit apparaat';
-        saveStatus.title = '';
-        refreshHistory();
-    } catch (error) {
-        saveStatus.textContent = 'Opslaan mislukt';
-        saveStatus.title = `Je wijzigingen konden niet worden opgeslagen: ${error.message}`;
-        console.error('Eetdagboek kon niet worden opgeslagen.', error);
+    const date = activeDate || dateInput.value;
+    if (!isValidDate(date)) {
+        saveStatus.textContent = 'Kies een geldige datum';
+        return;
     }
+    savedDays[date] = activeDay;
+    pendingSave = { date, day: activeDay };
+    saveRevision += 1;
+    saveError = null;
+    saveStatus.textContent = 'Wordt opgeslagen…';
+    saveStatus.title = '';
+    window.clearTimeout(pendingSaveTimer);
+    pendingSaveTimer = window.setTimeout(() => {
+        const pending = pendingSave;
+        pendingSave = null;
+        if (pending) queueSave(pending.date, pending.day);
+    }, 500);
 }
 
-function saveCurrentDay() {
+async function flushSave() {
+    window.clearTimeout(pendingSaveTimer);
+    pendingSaveTimer = null;
+    if (pendingSave) {
+        const pending = pendingSave;
+        pendingSave = null;
+        queueSave(pending.date, pending.day);
+    }
+    await saveQueue;
+    return !saveError;
+}
+
+async function saveCurrentDay() {
     if (!activeDate) return true;
     activeDay = collectDay();
-    try {
-        const days = readLocalDays();
-        days[activeDate] = activeDay;
-        writeLocalDays(days);
-        refreshHistory();
-        return true;
-    } catch (error) {
-        saveStatus.textContent = 'Opslaan mislukt';
-        saveStatus.title = `Je wijzigingen konden niet worden opgeslagen: ${error.message}`;
-        console.error('Eetdagboek kon niet worden opgeslagen.', error);
-        return false;
-    }
+    savedDays[activeDate] = activeDay;
+    pendingSave = { date: activeDate, day: activeDay };
+    return flushSave();
 }
 
 function updateSummary() {
@@ -388,7 +418,7 @@ function formatDate(dateString) {
 }
 
 function refreshHistory() {
-    const dates = Object.keys(readLocalDays())
+    const dates = Object.keys(readCloudDays())
         .filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date))
         .sort()
         .reverse();
@@ -403,48 +433,47 @@ function refreshHistory() {
     if (dates.includes(currentValue)) historySelect.value = currentValue;
 }
 
-function loadDay(date) {
+async function loadDay(date) {
     try {
-        if (activeDate && activeDate !== date && !saveCurrentDay()) {
+        if (!isValidDate(date)) throw new Error('Kies een geldige datum.');
+        if (activeDate && activeDate !== date && !await saveCurrentDay()) {
             dateInput.value = activeDate;
             return;
         }
-        const days = readLocalDays();
+        const days = readCloudDays();
         const savedDay = Object.prototype.hasOwnProperty.call(days, date) ? days[date] : null;
         activeDay = normalizeDay(savedDay);
         activeDate = date;
         render();
-        saveStatus.textContent = savedDay ? 'Dag geladen' : 'Nieuwe dag, nog niet opgeslagen';
+        saveStatus.textContent = savedDay ? 'Dag uit de cloud geladen' : 'Nieuwe dag, nog niet opgeslagen';
         saveStatus.title = '';
     } catch (error) {
         if (activeDate) dateInput.value = activeDate;
-        activeDay = blankDay();
-        render();
         saveStatus.textContent = 'Dag laden mislukt';
         saveStatus.title = error.message;
         console.error('Eetdagboek kon niet worden geladen.', error);
     }
 }
 
-function createDay() {
+async function createDay() {
     const date = dateInput.value;
-    if (!date) return;
+    if (!isValidDate(date)) return;
     try {
-        if (!saveCurrentDay()) return;
-        const days = readLocalDays();
+        if (!await saveCurrentDay()) return;
+        const days = readCloudDays();
         if (Object.prototype.hasOwnProperty.call(days, date)) {
             saveStatus.textContent = 'Deze dag bestaat al';
-            loadDay(date);
+            await loadDay(date);
             return;
         }
-        days[date] = blankDay();
-        writeLocalDays(days);
         activeDay = blankDay();
         activeDate = date;
+        savedDays[date] = activeDay;
         render();
-        saveStatus.textContent = 'Dag aangemaakt en opgeslagen op dit apparaat';
+        saveStatus.textContent = 'Dag wordt opgeslagen…';
         saveStatus.title = '';
         refreshHistory();
+        await queueSave(date, activeDay);
     } catch (error) {
         saveStatus.textContent = 'Dag aanmaken mislukt';
         saveStatus.title = error.message;
@@ -522,11 +551,14 @@ async function copyOverview() {
     preview.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-function openDocument() {
-    scheduleSave();
+async function openDocument() {
     const exportWindow = window.open('about:blank', '_blank');
     if (!exportWindow) {
         saveStatus.textContent = 'Sta pop-ups toe om het overzicht te openen';
+        return;
+    }
+    if (!await saveCurrentDay()) {
+        exportWindow.close();
         return;
     }
     const exportUrl = new URL('export.html', document.baseURI);
@@ -580,59 +612,180 @@ pageTabs.forEach((tab, index) => {
         nextTab.focus();
     });
 });
-document.getElementById('share-app-button').addEventListener('click', shareAppLink);
-authForm.addEventListener('submit', event => {
+authForm.addEventListener('submit', async event => {
     event.preventDefault();
-    if (authPassword.value !== devModeCode) {
-        authStatus.textContent = 'De code klopt niet.';
+    authStatus.textContent = 'Bezig met inloggen…';
+    const submitButton = authForm.querySelector('button[type="submit"]');
+    submitButton.disabled = true;
+    try {
+        const result = await apiRequest('/api/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ code: authPassword.value })
+        });
+        sessionToken = result.token;
+        sessionRole = result.role;
+        localStorage.setItem(sessionStorageKey, sessionToken);
+        authPassword.value = '';
+        authStatus.textContent = '';
+        await showDiaryApp(result.name);
+    } catch (error) {
+        authStatus.textContent = error.message;
         authPassword.select();
-        return;
+        console.error('Inloggen is mislukt.', error);
+    } finally {
+        submitButton.disabled = false;
     }
-    authPassword.value = '';
-    authStatus.textContent = '';
-    showDiaryApp(true);
 });
 
-logoutButton.addEventListener('click', () => {
-    if (!isDevMode) return;
-    isDevMode = false;
+logoutButton.addEventListener('click', async () => {
+    if (!await saveCurrentDay()) return;
+    localStorage.removeItem(sessionStorageKey);
+    sessionToken = '';
+    sessionRole = '';
     appStarted = false;
     diaryApp.hidden = true;
     installScreen.hidden = false;
     logoutButton.hidden = true;
-    authStatus.textContent = 'Je bent uitgelogd uit devmode.';
+    adminPanel.hidden = true;
+    authStatus.textContent = 'Je bent uitgelogd.';
 });
 
-function startApp() {
+async function startApp() {
     try {
-        loadDay(dateInput.value);
+        const result = await apiRequest('/api/days');
+        savedDays = {};
+        result.entries.forEach(entry => {
+            savedDays[entry.date] = normalizeDay(entry.data);
+        });
+        await loadDay(dateInput.value);
         refreshHistory();
     } catch (error) {
-        saveStatus.textContent = 'Lokale opslag niet beschikbaar';
-        saveStatus.title = `Je dagboek kon niet uit deze browser worden gelezen: ${error.message}`;
-        console.error('Lokale dagboekopslag kon niet worden gelezen.', error);
+        saveStatus.textContent = 'Dagboek laden mislukt';
+        saveStatus.title = `De gegevens konden niet uit Supabase worden gelezen: ${error.message}`;
+        console.error('Eetdagboek kon niet uit Supabase worden geladen.', error);
     }
 }
 
-function showDiaryApp(devMode) {
-    isDevMode = devMode;
-    installScreen.hidden = true;
-    diaryApp.hidden = false;
-    logoutButton.hidden = !devMode;
-    if (appStarted) return;
-    appStarted = true;
-    startApp();
+async function loadAdminUsers() {
+    const result = await apiRequest('/api/admin/users');
+    adminUserList.replaceChildren();
+    result.users.forEach(user => {
+        const item = document.createElement('li');
+        const details = document.createElement('span');
+        details.textContent = `${user.name}${user.active ? '' : ' — ingetrokken'}`;
+        item.appendChild(details);
+        if (user.active) {
+            const button = document.createElement('button');
+            button.className = 'button button-secondary';
+            button.type = 'button';
+            button.dataset.revokeUser = user.id;
+            button.textContent = 'Intrekken';
+            item.appendChild(button);
+        }
+        adminUserList.appendChild(item);
+    });
 }
 
-function isInstalledApp() {
-    return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
-        navigator.standalone === true;
+async function showDiaryApp(name) {
+    installScreen.hidden = true;
+    diaryApp.hidden = false;
+    logoutButton.hidden = false;
+    adminPanel.hidden = sessionRole !== 'admin';
+    document.getElementById('account-name').textContent = name || '';
+    if (appStarted) return;
+    appStarted = true;
+    if (sessionRole === 'admin') {
+        document.getElementById('diary-tab').hidden = true;
+        activatePageTab(document.getElementById('reminders-tab'));
+        try {
+            await loadAdminUsers();
+        } catch (error) {
+            adminStatus.textContent = `Gebruikers laden mislukt: ${error.message}`;
+        }
+        return;
+    }
+    document.getElementById('diary-tab').hidden = false;
+    await startApp();
 }
 
 if ('serviceWorker' in navigator && window.isSecureContext) {
     navigator.serviceWorker.register('service-worker.js').catch(error => {
-        console.error('De offlinefunctie kon niet worden ingeschakeld.', error);
+        console.error('De app-shell kon niet worden bijgewerkt.', error);
     });
 }
 
-if (isInstalledApp()) showDiaryApp(false);
+document.getElementById('create-user-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const nameInput = document.getElementById('new-user-name');
+    const button = event.currentTarget.querySelector('button[type="submit"]');
+    button.disabled = true;
+    adminStatus.textContent = 'Gebruiker wordt aangemaakt…';
+    generatedCodePanel.hidden = true;
+    try {
+        const result = await apiRequest('/api/admin/users', {
+            method: 'POST',
+            body: JSON.stringify({ name: nameInput.value })
+        });
+        generatedUserCode.textContent = result.code;
+        generatedCodePanel.hidden = false;
+        nameInput.value = '';
+        adminStatus.textContent = 'Gebruiker aangemaakt. Bewaar de code; hij wordt niet opnieuw getoond.';
+        await loadAdminUsers();
+    } catch (error) {
+        adminStatus.textContent = `Gebruiker aanmaken mislukt: ${error.message}`;
+        console.error('Gebruiker kon niet worden aangemaakt.', error);
+    } finally {
+        button.disabled = false;
+    }
+});
+
+adminUserList.addEventListener('click', async event => {
+    const button = event.target.closest('[data-revoke-user]');
+    if (!button || !window.confirm('Wil je deze gebruiker intrekken? De toegang tot diens dagboek wordt direct geblokkeerd.')) return;
+    button.disabled = true;
+    try {
+        await apiRequest(`/api/admin/users?id=${encodeURIComponent(button.dataset.revokeUser)}`, {
+            method: 'DELETE'
+        });
+        adminStatus.textContent = 'Gebruiker ingetrokken.';
+        await loadAdminUsers();
+    } catch (error) {
+        button.disabled = false;
+        adminStatus.textContent = `Gebruiker intrekken mislukt: ${error.message}`;
+        console.error('Gebruiker kon niet worden ingetrokken.', error);
+    }
+});
+
+document.getElementById('copy-user-code-button').addEventListener('click', async () => {
+    try {
+        await navigator.clipboard.writeText(generatedUserCode.textContent);
+        adminStatus.textContent = 'Gebruikerscode gekopieerd.';
+    } catch (error) {
+        adminStatus.textContent = 'Kopiëren mislukt. Selecteer de gebruikerscode en kopieer deze handmatig.';
+        console.error('Gebruikerscode kon niet worden gekopieerd.', error);
+    }
+});
+
+async function resumeSession() {
+    try {
+        sessionToken = localStorage.getItem(sessionStorageKey) || '';
+    } catch (error) {
+        authStatus.textContent = `De blijvende sessie kan niet worden gelezen: ${error.message}`;
+        return;
+    }
+    if (!sessionToken) return;
+    try {
+        const account = await apiRequest('/api/auth/me');
+        sessionRole = account.role;
+        await showDiaryApp(account.name);
+    } catch (error) {
+        if (error.message.includes('Log opnieuw in') || error.message.includes('sessie') ||
+            error.message.includes('ingetrokken')) {
+            localStorage.removeItem(sessionStorageKey);
+            sessionToken = '';
+        }
+        authStatus.textContent = `Automatisch inloggen is mislukt: ${error.message}`;
+    }
+}
+
+resumeSession();
